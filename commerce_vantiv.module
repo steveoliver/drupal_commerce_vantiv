@@ -191,6 +191,16 @@ function commerce_vantiv_settings_form($settings = NULL) {
     ),
   );
 
+  $form['logs'] = array(
+    '#type' => 'select',
+    '#title' => t('Log issue responses.'),
+    '#description' => t('Select whether or not the responses from the http requests should be logged.'),
+    '#options' => array(
+      '0' => t('Always log the responses'),
+      '1' => t('Never log the responses'),
+    ),
+  );
+
   //$form['#submit'][] = 'commerce_vantiv_settings_form_submit';
 
   return $form;

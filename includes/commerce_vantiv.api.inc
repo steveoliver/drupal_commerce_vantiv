@@ -26,6 +26,7 @@ class VantivApi {
     $currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
     $card_owner_name = $customer_profile->commerce_customer_address['und'][0]['name_line'];
+    $user = user_load($order->uid);
     $billing_data = array(
           'user' => $this->user,
           'password' => $this->password,
@@ -44,7 +45,8 @@ class VantivApi {
           'print_xml' => '',
           'orderId' => $order->order_id,
 		      'amount' => $charge_amount,
-          'id'=> 'id',
+          //id of auth or sale response in the xml tag.
+          'id'=> $user->uid,
 		      'orderSource'=>'ecommerce',
 		      'billToAddress'=>array(
 		      'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
@@ -60,18 +62,31 @@ class VantivApi {
 		      'type' => $this->cardTypes($card_info['credit_card']['type']))
     );
 
+    $initilaize = new litle\sdk\LitleOnlineRequest();
+
+    if ($this->transaction_type_process == 'pre_auth') {
+      $saleResponse = $initilaize->authorizationRequest($billing_data);
+    }
+    elseif ($this->transaction_type_process == 'sale') {
+      $saleResponse = $initilaize->saleRequest($billing_data);
+    }
+
 /*
     if ($this->three_d_secure == 0) {
       $billing_data['orderSource'] = '3dsAttempted';
     }*/
 
-    $initilaize = new litle\sdk\LitleOnlineRequest();
-    variable_set('init', $initilaize);
-    $saleResponse = $initilaize->saleRequest($billing_data);
-    $payload = litle\sdk\XmlParser::getDomDocumentAsString($saleResponse);
-    $response_code = litle\sdk\XmlParser::getNode($saleResponse,'response');
-    variable_set('resp_code', $response_code);
-    variable_set('payload', $payload);
+
+
+
+    if ($this->transaction_type_process == 'sale') {
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($saleResponse);
+      $response_code = litle\sdk\XmlParser::getNode($saleResponse,'response');
+
+
+      variable_set('resp_code', $response_code);
+      variable_set('payload', $payload);
+    }
 
     $return = $this->process_transaction($saleResponse, $payment_method);
   }
@@ -80,18 +95,18 @@ class VantivApi {
    * Process the transaction according to the respond.
    */
   public function process_transaction($saleResponse, $payment_method) {
-    //Get response information.
-    $response_code = litle\sdk\XmlParser::getNode($saleResponse,'response');
-    $oder_id = litle\sdk\XmlParser::getNode($saleResponse,'orderId');
-    $response_time = litle\sdk\XmlParser::getNode($saleResponse,'responseTime');
-    $message = litle\sdk\XmlParser::getNode($saleResponse,'message');
-    $auth_code = litle\sdk\XmlParser::getNode($saleResponse,'authCode');
-    $avs_result = litle\sdk\XmlParser::getNode($saleResponse,'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($saleResponse,'cardValidationResult');
-    $litle_txn_id = litle\sdk\XmlParser::getNode($saleResponse,'litleTxnId');
+      //Get response information.
+    $response_code = litle\sdk\XmlParser::getNode($response,'response');
+    $oder_id = litle\sdk\XmlParser::getNode($response,'orderId');
+    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
+    $message = litle\sdk\XmlParser::getNode($response,'message');
+    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
+    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
+    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
+    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
 
-    //Get the payload.
-    $payload = litle\sdk\XmlParser::getDomDocumentAsString($saleResponse);
+    $authorizationResponse = litle\sdk\XmlParser::getNode($response,'authorizationResponse');
+    $saleResponse = litle\sdk\XmlParser::getNode($response,'saleResponse');
 
     //If the transaction was approved.
     if ($response_code == '000') {
@@ -100,12 +115,31 @@ class VantivApi {
       $transaction->instance_id = $payment_method['instance_id'];
       $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
       $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
-      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      //$transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
       $transaction->remote_id = $litle_txn_id;
       $transaction->remote_status = $message;
       $transaction->message_variables = array('@auth_code' => $auth_code);
-      $transaction->message .= '<br />' . t('@message: @date', array('@message' => $message, '@date' => format_date(REQUEST_TIME, 'short')));
-      $transaction->payload = $payload;
+
+        //Get the payload.
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+        $transaction->payload = $payload;
+
+      if (!empty($authorizationResponse) /*and $this->transaction_type_process == 'pre_auth'*/) {
+        $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+        $transaction->message .= t('Authorized:') . t('@message: @date', array('@message' => $message, '@date' => format_date(REQUEST_TIME, 'short')));
+      }
+      elseif (!empty($saleResponse) /*and $this->transaction_type_process == 'sale'*/) {
+        $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+        $transaction->message .= t('Sale:') . t('@message: @date', array('@message' => $message, '@date' => format_date(REQUEST_TIME, 'short')));
+      }
+      else {
+        if (!empty($message) and !empty($order)) {
+          if ($this->logs == 0) {
+            watchdog('commerce_ogone', "The order# @order was cancelled, due to @message", array('@order' => $order->order_id, '@message' => $message), WATCHDOG_ERROR);
+          }
+        }
+        drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
+      }
       commerce_payment_transaction_save($transaction);
     }
   }
