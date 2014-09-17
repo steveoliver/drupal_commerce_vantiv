@@ -1,5 +1,5 @@
 name = Commerce Vantiv
-description = Implements Litle payment services for use with Drupal Commerce.
+description = Implements Vantiv payment services for use with Drupal Commerce.
 package = Commerce (contrib)
 
 ;Depend on libraries module.
@@ -12,5 +12,3 @@ dependencies[] = commerce_order_ui
 
 core = 7.x
 configure = admin/commerce/config/payment-methods
-
-project = "commerce_litle"
