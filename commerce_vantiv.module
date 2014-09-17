@@ -4,8 +4,10 @@
  * Implements Litle payment services for use in Drupal Commerce.
  */
 
+define('COMMERCE_VANTIV_STATUS_CAPTURE', 'CAPTURE');
 define('COMMERCE_VANTIV_STATUS_CAPTURED', 'CAPTURED');
-define('COMMERCE_VANTIV_STATUS_REFUND', 'REFUNDED');
+define('COMMERCE_VANTIV_STATUS_REFUND', 'REFUND');
+define('COMMERCE_VANTIV_STATUS_REFUNDED', 'REFUNDED');
 define('COMMERCE_VANTIV_STATUS_CANCELED', 'CANCELED');
 
 /**
@@ -89,6 +91,19 @@ function commerce_vantiv_menu() {
     'weight' => 1,
   );
 
+  // Add a menu item for refund.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/vantiv_refund'] = array(
+    'title' => 'Refund',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_vantiv_refund_form', 3, 5),
+    'access callback' => 'commerce_vantiv_refund_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'file' => 'includes/commerce_vantiv.admin.inc',
+    'weight' => 1,
+  );
+
   return $items;
 }
 
@@ -96,9 +111,22 @@ function commerce_vantiv_menu() {
  * Determine whether the user has permissions to perform capture.
  */
 function commerce_vantiv_capture_access($order, $transaction) {
-  // Return FALSE if the transaction isn't for Ogone or isn't
+  // Return FALSE if the transaction isn't for Vantiv or isn't
   // awaiting capture.
   if (($transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || $transaction->status !== COMMERCE_PAYMENT_STATUS_PENDING) {
+    return FALSE;
+  }
+  // Allow access if the user can update this transaction.
+  return commerce_payment_transaction_access('update', $transaction);
+}
+
+/**
+ * Determine whether the user has permissions to perform capture.
+ */
+function commerce_vantiv_refund_access($order, $transaction) {
+  // Return FALSE if the transaction isn't for Vantiv or isn't
+  // awaiting refund.
+  if (($transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS)) {
     return FALSE;
   }
   // Allow access if the user can update this transaction.
@@ -270,6 +298,13 @@ function commerce_vantiv_api_object($settings = array(), $instance_id = '') {
 function commerce_vantiv_commerce_payment_transaction_status_info() {
   $statuses = array();
 
+  $statuses[COMMERCE_VANTIV_STATUS_CAPTURE] = array(
+    'status' => COMMERCE_VANTIV_STATUS_CAPTURE,
+    'title' => t('Captured'),
+    'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-success.png',
+    'total' => TRUE,
+  );
+
   $statuses[COMMERCE_VANTIV_STATUS_CAPTURED] = array(
     'status' => COMMERCE_VANTIV_STATUS_CAPTURED,
     'title' => t('Captured'),
@@ -279,6 +314,13 @@ function commerce_vantiv_commerce_payment_transaction_status_info() {
 
   $statuses[COMMERCE_VANTIV_STATUS_REFUND] = array(
     'status' => COMMERCE_VANTIV_STATUS_REFUND,
+    'title' => t('Refund'),
+    'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-success.png',
+    'total' => FALSE,
+  );
+
+  $statuses[COMMERCE_VANTIV_STATUS_REFUNDED] = array(
+    'status' => COMMERCE_VANTIV_STATUS_REFUNDED,
     'title' => t('Refund'),
     'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-success.png',
     'total' => FALSE,
