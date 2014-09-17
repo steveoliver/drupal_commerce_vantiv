@@ -91,7 +91,7 @@ class VantivApi {
   /**
    * Process cross payments.
    */
-  public function crossPayment($transaction) {
+  public function crossPayment($transaction, $partial_capture = '', $amount = '') {
     $load_library = self::libraryLoad();
     /*$currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
@@ -117,7 +117,11 @@ class VantivApi {
           'litleTxnId' => $transaction->remote_id,
     );
 
-
+    if (!empty($partial_capture) and $partial_capture == TRUE and !empty($amount)) {
+      $billing_data['partial'] = 'true';
+      $billing_data['amount'] = $amount;
+      $partial_amount = $amount;
+    }
     $init = new litle\sdk\LitleOnlineRequest();
     $response = $init->captureRequest($billing_data);
 
@@ -129,7 +133,12 @@ class VantivApi {
     variable_set('data', $billing_data);
 
     $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
-    $return = $this->processCapturedTransactions($response, $payment_method, $transaction);
+    if (!empty($partial_capture) and $partial_capture == TRUE and !empty($amount)) {
+      $return = $this->processCapturedTransactions($response, $payment_method, $transaction, $partial_amount);
+    }
+    else {
+      $return = $this->processCapturedTransactions($response, $payment_method, $transaction);
+    }
   }
 
 //vantiv_direct|commerce_payment_vantiv_direct
@@ -233,6 +242,14 @@ class VantivApi {
       elseif (!empty($transaction)) {
         $order = commerce_order_load($transaction->order_id);
       }
+
+      if (!empty($partial_amount)) {
+        $transaction->amount = $partial_amount;
+      }
+      else {
+        $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
+      }
+
       $transaction->instance_id = $payment_method['instance_id'];
       $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
       $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];

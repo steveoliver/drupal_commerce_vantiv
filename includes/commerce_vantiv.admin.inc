@@ -56,7 +56,7 @@ function commerce_vantiv_capture_form($form, &$form_state, $order, $transaction)
  */
 function commerce_vantiv_capture_form_validate($form, &$form_state) {
   $transaction = $form_state['transaction'];
-/*  $amount = $form_state['values']['amount'];
+  $amount = $form_state['values']['amount'];
   // Ensure a positive numeric amount has been entered for capture.
   if (!is_numeric($amount) || $amount <= 0) {
     form_set_error('amount', t('You must specify a positive numeric amount to capture.'));
@@ -65,7 +65,7 @@ function commerce_vantiv_capture_form_validate($form, &$form_state) {
   // Ensure the amount is less than or equal to the authorization amount.
   if ($amount > commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code)) {
     form_set_error('amount', t('You cannot capture more than you authorized through Ogone.'));
-  }*/
+  }
 }
 
 /**
@@ -73,15 +73,22 @@ function commerce_vantiv_capture_form_validate($form, &$form_state) {
  */
 function commerce_vantiv_capture_form_submit($form, &$form_state) {
   $transaction = $form_state['transaction'];
+  $entered_amount = commerce_currency_decimal_to_amount($form_state['values']['amount'], $form_state['build_info']['args'][0]->commerce_order_total['und'][0]['currency_code']);
 
-  $order = commerce_order_load($transaction->order_id);
+  /*$order = commerce_order_load($transaction->order_id);
   $payment_methods = commerce_payment_method_instance_load($transaction->instance_id);
 
   $amount = commerce_currency_decimal_to_amount($form_state['values']['amount'], $transaction->currency_code);
   $description = t('Authorization capture for order #@order_id at @site_name', array(
     '@order_id' => $order->order_id,
     '@site_name' => variable_get('site_name', ''),
-  ));
+  ));*/
+
+  // Check if partial transaction is required.
+  if ($form_state['build_info']['args'][0]->commerce_order_total['und'][0]['amount'] > $entered_amount) {
+    $partial_capture = TRUE;
+    $amount = $entered_amount;
+  }
   $api = commerce_vantiv_api_object();
   $result = $api->crossPayment($transaction);
 
