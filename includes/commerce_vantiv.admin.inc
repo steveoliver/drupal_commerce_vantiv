@@ -193,7 +193,76 @@ function commerce_vantiv_refund_form_submit($form, &$form_state) {
   $result = $api->crossPayment($transaction, '', '', 'refund');
 }
 
+/**
+ * Void transactions.
+ */
+function commerce_vantiv_void_form($form, &$form_state, $order, $transaction) {
+  $form_state['order'] = $order;
+  $form_state['transaction'] = $transaction;
+  dsm($transaction, 'transaction');
+  dsm($order, 'order');
+  // Load and store the payment method instance for this transaction.
+  $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  $form_state['payment_method'] = $payment_method;
 
+  // Order balance left.
+  $balance = commerce_payment_order_balance($order);
+  dsm($balance, 'balance');
+  $default_amount = $transaction->amount;
+
+  $default_amount = number_format(commerce_currency_amount_to_decimal($default_amount, $transaction->currency_code), 2, '.', '');
+
+  $description =
+    t('Authorization: @amount,', array('@amount' => commerce_currency_format($transaction->amount, $transaction->currency_code))) .
+    t('Order balance: @balance', array('@balance' => commerce_currency_format($balance['amount'], $balance['currency_code'])));
+
+  /*$form['amount'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Refund amount'),
+    '#description' => t('@description', array('@description' => $description)),
+    '#default_value' => $default_amount,
+    '#field_suffix' => check_plain($transaction->currency_code),
+    '#size' => 16,
+  );*/
+
+  $form['void'] = array(
+    '#type' => 'hidden',
+    '#title' => t('Hidden element for confirmation'),
+    '#default_value' => 1,
+  );
+
+  $form = confirm_form($form,
+      t('What amount do you want to void ?'),
+      'admin/commerce/orders/' . $order->order_id . '/payment',
+      '',
+      t('Void'),
+      t('Cancel'),
+      'confirm'
+  );
+
+  return $form;
+}
+
+/**
+ * Validate handler: ensure a valid amount is given.
+ */
+function ccommerce_vantiv_void_form_validate($form, &$form_state) {
+  dsm($form_state, 'form_state');
+}
+
+/**
+ * Submit handler: process a prior captured transactions via Vantiv.
+ */
+function commerce_vantiv_void_form_submit($form, &$form_state) {
+  if ($form_state['values']['void'] == 1) {
+    $transaction = $form_state['transaction'];
+
+    // Check if partial transaction is required.
+    $api = commerce_vantiv_api_object();
+
+    $result = $api->crossPayment($transaction, '', '', 'void');
+  }
+}
 
 
 

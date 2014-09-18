@@ -161,6 +161,9 @@ class VantivApi {
     elseif ($type == 'refund') {
       $return = $this->processRefundedTransactions($response, $payment_method, $transaction);
     }
+    elseif ($type == 'void') {
+      $response = $init->voidRequest($billing_data);
+    }
   }
 
 //vantiv_direct|commerce_payment_vantiv_direct
@@ -390,6 +393,85 @@ class VantivApi {
         if (!empty($message) and !empty($order)) {
           if ($this->logs == 0) {
             watchdog('commerce_ogone', "The order# @order was cancelled, due to @message", array('@order' => $order->order_id, '@message' => $message), WATCHDOG_ERROR);
+          }
+        }
+        drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
+      }
+      commerce_payment_transaction_save($transaction);
+      drupal_goto('admin/commerce/orders');
+    }
+  }
+
+  /**
+   * Process void transactions.
+   */
+  public function processVoidTransaction($response, $payment_method, $transaction) {
+      //Get response information.
+    $response_code = litle\sdk\XmlParser::getNode($response,'response');
+    $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
+    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
+    $message = litle\sdk\XmlParser::getNode($response,'message');
+    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
+    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
+    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
+    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+
+    $voidResponse = litle\sdk\XmlParser::getNode($response,'voidResponse');
+
+    if (!empty($voidResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'voidResponse', 'id');
+      $payload_attribute = 'voidResponse';
+    }
+
+    //If the transaction was approved.
+    if ($response_code == '000') {
+      if (!empty($order_id)) {
+        $order = commerce_order_load($order_id);
+      }
+      elseif (!empty($transaction)) {
+        $order = commerce_order_load($transaction->order_id);
+      }
+
+      // The captured transaction becomes voided.
+      $transaction->status = COMMERCE_VANTIV_STATUS_VOIDED;
+      $transaction->message .= t('<br/> Voided:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+      // Set the new transaction balance of the previous transaction from the same order.
+      if (!empty($partial_amount)) {
+        $transaction->amount = $transaction->amount - $partial_amount;
+      }
+      else {
+        $transaction->amount = 0;
+      }
+      commerce_payment_transaction_save($transaction);
+      $transaction = commerce_payment_transaction_new('vantiv_direct', $order->order_id);
+      if (!empty($partial_amount)) {
+        $transaction->amount = $partial_amount;
+      }
+      else {
+        $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
+      }
+
+      $transaction->instance_id = $payment_method['instance_id'];
+      $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
+      //$transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->remote_id = $litle_txn_id;
+      $transaction->remote_status = $message;
+      $transaction->message_variables = array('@auth_code' => $auth_code);
+
+      //Get the payload.
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
+      $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
+      if (!empty($voidResponse)) {
+        $transaction->status = COMMERCE_VANTIV_STATUS_VOID;
+        $transaction->message .= t('<br/> Void:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+        $transaction->data = array('id' => $id);
+        drupal_set_message(t('Transaction was voided successfully.'), 'status');
+      }
+      else {
+        if (!empty($message) and !empty($order)) {
+          if ($this->logs == 0) {
+            watchdog('commerce_vantiv', "This operation was not successful due to: @message", array('@message' => $message), WATCHDOG_ERROR);
           }
         }
         drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');

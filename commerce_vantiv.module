@@ -3,12 +3,12 @@
  * @file
  * Implements Litle payment services for use in Drupal Commerce.
  */
-
 define('COMMERCE_VANTIV_STATUS_CAPTURE', 'CAPTURE');
 define('COMMERCE_VANTIV_STATUS_CAPTURED', 'CAPTURED');
 define('COMMERCE_VANTIV_STATUS_REFUND', 'REFUND');
 define('COMMERCE_VANTIV_STATUS_REFUNDED', 'REFUNDED');
-define('COMMERCE_VANTIV_STATUS_CANCELED', 'CANCELED');
+define('COMMERCE_VANTIV_STATUS_VOID', 'VOIDED');
+define('COMMERCE_VANTIV_STATUS_VOIDED', 'VOIDEDED');
 
 /**
  * Implements hook_libraries_info().
@@ -70,14 +70,6 @@ function commerce_vantiv_commerce_payment_method_info() {
 function commerce_vantiv_menu() {
   $items = array();
 
-  //test url.
-  $items['test'] = array(
-    'page callback' => 'test',
-    //'page arguments' => array(3),
-    'access callback' => TRUE,
-    'type' => MENU_CALLBACK,
-  );
-
   // Add a menu item for capture.
   $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/vantiv_capture'] = array(
     'title' => 'Capture',
@@ -97,6 +89,19 @@ function commerce_vantiv_menu() {
     'page callback' => 'drupal_get_form',
     'page arguments' => array('commerce_vantiv_refund_form', 3, 5),
     'access callback' => 'commerce_vantiv_refund_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'file' => 'includes/commerce_vantiv.admin.inc',
+    'weight' => 1,
+  );
+
+  // Add a menu item for void.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/vantiv_void'] = array(
+    'title' => 'Void',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_vantiv_void_form', 3, 5),
+    'access callback' => 'commerce_vantiv_void_access',
     'access arguments' => array(3, 5),
     'type' => MENU_LOCAL_TASK,
     'context' => MENU_CONTEXT_INLINE,
@@ -124,6 +129,19 @@ function commerce_vantiv_capture_access($order, $transaction) {
  * Determine whether the user has permissions to perform capture.
  */
 function commerce_vantiv_refund_access($order, $transaction) {
+  // Return FALSE if the transaction isn't for Vantiv or isn't
+  // awaiting refund.
+  if (($transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS)) {
+    return FALSE;
+  }
+  // Allow access if the user can update this transaction.
+  return commerce_payment_transaction_access('update', $transaction);
+}
+
+/**
+ * Determine whether the user has permissions to perform capture.
+ */
+function commerce_vantiv_void_access($order, $transaction) {
   // Return FALSE if the transaction isn't for Vantiv or isn't
   // awaiting refund.
   if (($transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS)) {
@@ -223,44 +241,7 @@ function commerce_vantiv_settings_form($settings = NULL) {
   return $form;
 }
 
-function test() {
-  $api = commerce_vantiv_api_object();
-  $load_library = $api->libraryLoad();
-  $transaction = ommerce_vantiv_load_last_saved_transaction();
-  $transaction = reset($transaction);
-  $billing_data = array(
-          'user' => $api->user,
-          'password' => $api->password,
-          'merchantId' => $api->merchant_id,
-          'reportGroup' => 'rtpGrp',
-          'url' => $api->accountLinks($api->account),
-          'litle_requests_path' => $api->accountLinks($api->account),
-          'batch_requests_path' => '',
-          'proxy' => '',
-          'sftp_username' => '',
-          'sftp_password' => '',
-          'batch_url' => '',
-          'tcp_port' => '',
-          'tcp_ssl' => '',
-          'tcp_timeout' => '',
-          'print_xml' => '',
-          'id'=> $transaction->data['id'],
-          'litleTxnId' => $transaction->remote_id,
-    );
-
-    $api = new litle\sdk\LitleOnlineRequest();
-    $response = $api->captureRequest($billing_data);
-    variable_set('capture', $response);
-    dsm($response, 'captureRequest');
-    $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-    dsm($payload, 'payload');
-    dsm(commerce_payment_method_load('vantiv_direct'), 'method');
-    dsm(commerce_payment_transaction_load(30), 'transac');
-    $transaction = commerce_payment_transaction_load(30);
-    dsm(commerce_payment_method_instance_load($transaction->instance_id));
-}
-
-function ommerce_vantiv_load_last_saved_transaction() {
+function commerce_vantiv_load_last_saved_transaction() {
   global $user;
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'commerce_payment_transaction')
@@ -276,7 +257,6 @@ function ommerce_vantiv_load_last_saved_transaction() {
   }
   return $return;
 }
-
 
 /**
  * Creates api object.
@@ -321,14 +301,21 @@ function commerce_vantiv_commerce_payment_transaction_status_info() {
 
   $statuses[COMMERCE_VANTIV_STATUS_REFUNDED] = array(
     'status' => COMMERCE_VANTIV_STATUS_REFUNDED,
-    'title' => t('Refund'),
+    'title' => t('Refunded'),
     'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-success.png',
     'total' => FALSE,
   );
 
-  $statuses[COMMERCE_VANTIV_STATUS_CANCELED] = array(
-    'status' => COMMERCE_VANTIV_STATUS_CANCELED,
-    'title' => t('Canceled'),
+  $statuses[COMMERCE_VANTIV_STATUS_VOID] = array(
+    'status' => COMMERCE_VANTIV_STATUS_VOID,
+    'title' => t('Void'),
+    'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-failure.png',
+    'total' => FALSE,
+  );
+
+  $statuses[COMMERCE_VANTIV_STATUS_VOIDED] = array(
+    'status' => COMMERCE_VANTIV_STATUS_VOIDED,
+    'title' => t('Voided'),
     'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-failure.png',
     'total' => FALSE,
   );
