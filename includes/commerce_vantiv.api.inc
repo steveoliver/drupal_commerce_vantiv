@@ -29,52 +29,94 @@ class VantivApi {
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
     $card_owner_name = $customer_profile->commerce_customer_address['und'][0]['name_line'];
     $user = user_load($order->uid);
-    $billing_data = array(
-          'user' => $this->user,
-          'password' => $this->password,
-          'merchantId' => $this->merchant_id,
-          'reportGroup' => 'rtpGrp',
-          'url' => $this->accountLinks($this->account),
-          'litle_requests_path' => $this->accountLinks($this->account),
-          'batch_requests_path' => '',
-          'proxy' => '',
-          'sftp_username' => '',
-          'sftp_password' => '',
-          'batch_url' => '',
-          'tcp_port' => '',
-          'tcp_ssl' => '',
-          'tcp_timeout' => '',
-          'print_xml' => '',
-          'orderId' => $order->order_id,
-		      'amount' => $charge_amount,
-          //id of auth or sale response in the xml tag.
-          'id'=> $order->order_id . '|' . time(),
-		      'orderSource'=>'ecommerce',
-		      'billToAddress'=>array(
-		      'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
-		      'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
-		      'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
-		      'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
-		      'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
-		      'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
-		      'card'=>array(
-		      'number' => $card_info['credit_card']['number'],
-		      'expDate' => $card_info['credit_card']['exp_month'] . substr($card_info['credit_card']['exp_year'], 2, 4),
-		      'cardValidationNum' => $card_info['credit_card']['code'],
-		      'type' => $this->cardTypes($card_info['credit_card']['type']))
-    );
-
-    variable_set('billing_data', $billing_data);
+    if (empty($token)) {
+      $billing_data = array(
+        'user' => $this->user,
+        'password' => $this->password,
+        'merchantId' => $this->merchant_id,
+        'reportGroup' => 'rtpGrp',
+        'url' => $this->accountLinks($this->account),
+        'litle_requests_path' => $this->accountLinks($this->account),
+        'batch_requests_path' => '',
+        'proxy' => '',
+        'sftp_username' => '',
+        'sftp_password' => '',
+        'batch_url' => '',
+        'tcp_port' => '',
+        'tcp_ssl' => '',
+        'tcp_timeout' => '',
+        'print_xml' => '',
+        'orderId' => $order->order_id,
+  		  'amount' => $charge_amount,
+        //id of auth or sale response in the xml tag.
+        'id'=> $order->order_id . '|' . time(),
+  		  'orderSource'=>'ecommerce',
+  		  'billToAddress'=>array(
+  		  'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
+  		  'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
+  		  'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
+  		  'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
+  		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
+  		  'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
+  		  'card' => array(
+  		  'number' => $card_info['credit_card']['number'],
+  		  'expDate' => $card_info['credit_card']['exp_month'] . substr($card_info['credit_card']['exp_year'], 2, 4),
+  		  'cardValidationNum' => $card_info['credit_card']['code'],
+  		  'type' => $this->cardTypes($card_info['credit_card']['type'])),
+      );
+    }
+    else {
+      $billing_data = array(
+        'user' => $this->user,
+        'password' => $this->password,
+        'merchantId' => $this->merchant_id,
+        'reportGroup' => 'rtpGrp',
+        'url' => $this->accountLinks($this->account),
+        'litle_requests_path' => $this->accountLinks($this->account),
+        'batch_requests_path' => '',
+        'proxy' => '',
+        'sftp_username' => '',
+        'sftp_password' => '',
+        'batch_url' => '',
+        'tcp_port' => '',
+        'tcp_ssl' => '',
+        'tcp_timeout' => '',
+        'print_xml' => '',
+        'orderId' => $order->order_id,
+  		  'amount' => $charge_amount,
+        //id of auth or sale response in the xml tag.
+        'id'=> $order->order_id . '|' . time(),
+  		  'orderSource'=>'ecommerce',
+  		  'billToAddress'=>array(
+  		  'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
+  	    'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
+  		  'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
+  		  'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
+  		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
+  		  'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
+        'token' => array(
+          'litleToken' => $token,
+        ),
+      );
+    }
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
-    if ($this->transaction_type_process == 'pre_auth') {
+    if ($this->transaction_type_process == 'pre_auth' and empty($card_info['cardonfile_store'])) {
       $response = $initilaize->authorizationRequest($billing_data);
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     }
-    elseif ($this->transaction_type_process == 'sale') {
+    elseif ($this->transaction_type_process == 'sale' and empty($card_info['cardonfile_store'])) {
       $response = $initilaize->saleRequest($billing_data);
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     }
+    elseif (!empty($card_info['cardonfile_store']) and $card_info['cardonfile_store'] == TRUE) {
+      $billing_data['accountNumber'] = $card_info['credit_card']['number'];
+      $response = $initilaize->registerTokenRequest($billing_data);
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+    }
+    $response_code = litle\sdk\XmlParser::getNode($response, 'response');
 
-    $return = $this->processDirectTransactions($response, $payment_method);
+    $this->processDirectTransactions($response, $payment_method, '', $card_info);
   }
 
   /**
@@ -174,7 +216,7 @@ class VantivApi {
    * Process the transaction according to the respond.
    */
   public function processDirectTransactions($response, $payment_method, $transaction = '') {
-    // Get response information.
+      // Get response information.
     $response_code = litle\sdk\XmlParser::getNode($response,'response');
     $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
     $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
@@ -186,7 +228,7 @@ class VantivApi {
 
     $authorizationResponse = litle\sdk\XmlParser::getNode($response,'authorizationResponse');
     $saleResponse = litle\sdk\XmlParser::getNode($response,'saleResponse');
-    //$captureResponse = litle\sdk\XmlParser::getNode($response,'captureResponse');
+    $registerTokenResponse = litle\sdk\XmlParser::getNode($response,'registerTokenResponse');
 
     if (!empty($authorizationResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'authorizationResponse', 'id');
@@ -196,6 +238,12 @@ class VantivApi {
       $id = litle\sdk\XmlParser::getAttribute($response, 'captureResponse', 'id');
       $payload_attribute = 'captureResponse';
     }
+    if (!empty($registerTokenResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'registerTokenResponse', 'id');
+      $payload_attribute = 'registerTokenResponse';
+      $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+    }
+
 
     //If the transaction was approved.
     if ($response_code == '000') {
@@ -205,39 +253,63 @@ class VantivApi {
       elseif (!empty($transaction)) {
         $order = commerce_order_load($transaction->order_id);
       }
-      $transaction = commerce_payment_transaction_new('vantiv_direct', $order->order_id);
-      $transaction->instance_id = $payment_method['instance_id'];
-      $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
-      $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
-      //$transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-      $transaction->remote_id = $litle_txn_id;
-      $transaction->remote_status = $message;
-      $transaction->message_variables = array('@auth_code' => $auth_code);
+      // If the transaction is not registerTokenResponse.
+      if (empty($registerTokenResponse)) {
+        $transaction = commerce_payment_transaction_new('vantiv_direct', $order->order_id);
+        $transaction->instance_id = $payment_method['instance_id'];
+        $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
+        $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
+        $transaction->remote_id = $litle_txn_id;
+        $transaction->remote_status = $message;
+        $transaction->message_variables = array('@auth_code' => $auth_code);
+        $transaction->data = array('auth_code' => $auth_code);
 
-      //Get the payload.
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+        //Get the payload.
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+        $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
+        $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
 
-      $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
-      $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
-
-      if (!empty($authorizationResponse)) {
-        $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
-        $transaction->message .= t('Authorized:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
-        $transaction->data = array('id' => $id);
-      }
-      elseif (!empty($saleResponse)) {
-        $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-        $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
-      }
-      else {
-        if (!empty($message) and !empty($order)) {
-          if ($this->logs == 0) {
-            watchdog('commerce_ogone', "The order# @order was cancelled, due to @message", array('@order' => $order->order_id, '@message' => $message), WATCHDOG_ERROR);
-          }
+        if (!empty($authorizationResponse)) {
+          $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+          $transaction->message .= t('Authorized:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+          $transaction->data = array('id' => $id);
         }
-        drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
+        elseif (!empty($saleResponse)) {
+          $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+          $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+        }
+        elseif (!empty($saleResponse)) {
+          $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+          $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+        }
+        else {
+          if (!empty($message) and !empty($order)) {
+            if ($this->logs == 0) {
+              watchdog('commerce_vantiv', "The order# @order was cancelled, due to @message", array('@order' => $order->order_id, '@message' => $message), WATCHDOG_ERROR);
+              $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+            }
+          }
+          drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
+        }
+        commerce_payment_transaction_save($transaction);
       }
-      commerce_payment_transaction_save($transaction);
+      // Save card on file if required.
+      if (!empty($litleToken)) {
+        $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
+        $card_data = commerce_cardonfile_new();
+        $card_data->uid = !empty($order->uid) ? $order->uid : $user->uid;
+        $card_data->payment_method = $payment_method['method_id'];
+        $card_data->instance_id = $payment_method['instance_id'];
+        $card_data->card_type = !empty($card_info['credit_card']['type']) ? strtolower($card_info['credit_card']['type']) : '';
+        $card_data->card_name = !empty($customer_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line']) ? $customer_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] : $order['credit_card']['owner']['#value'];
+        $card_data->card_number = drupal_substr($card_info['credit_card']['number'], -4);
+        $card_data->card_exp_month = $card_info['credit_card']['exp_month'];
+        $card_data->card_exp_year = $card_info['credit_card']['exp_year'];
+        $card_data->status = 1;
+        commerce_cardonfile_save($card_data);
+        $card_info['cardonfile_store'] = '';
+        $this->directPayments($customer_profile, $order, '', $payment_method, '', $litleToken);
+      }
     }
   }
 

@@ -69,7 +69,12 @@ function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane
 function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
   $api = commerce_vantiv_api_object();
   $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
-  $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);
+  if(!empty($pane_values['cardonfile_store']) and $pane_values['cardonfile_store'] == TRUE) {
+    $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);
+  }
+  else {
+    $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);
+  }
   return $result;
 }
 
