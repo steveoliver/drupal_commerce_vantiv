@@ -60,10 +60,99 @@ function commerce_vantiv_commerce_payment_method_info() {
     'active' => FALSE,
     'callback' => array(),
     'file' => 'includes/commerce_vantiv_direct.inc',
+    'cardonfile' => array(
+      //'charge callback' => 'commerce_firstdata_connect_cardonfile_charge',
+      'update callback' => 'commerce_vantiv_cardonfile_update',
+      'delete callback' => 'commerce_vantiv_cardonfile_delete',
+      'create callback' => 'commerce_vantiv_cardonfile_create',
+    ),
   );
 
   return $payment_methods;
 }
+
+function commerce_vantiv_cardonfile_update() {
+  if (!empty($_POST)) {
+    $params = $_POST;
+  }
+  else {
+    $params = $_GET;
+  }
+  return TRUE;
+}
+
+function commerce_vantiv_cardonfile_delete() {
+  return TRUE;
+}
+
+function commerce_vantiv_cardonfile_create() {
+  global $user;
+  if (!empty($_POST)) {
+    $params = $_POST;
+  }
+  else {
+    $params = $_GET;
+  }
+  dsm($params, 'params');
+  $api = commerce_vantiv_api_object();
+  $api->libraryLoad();
+
+  $data = array(
+    'user' => $api->user,
+    'password' => $api->password,
+    'merchantId' => $api->merchant_id,
+    'reportGroup' => 'rtpGrp',
+    'url' => $api->accountLinks($api->account),
+    'litle_requests_path' => $api->accountLinks($api->account),
+    'batch_requests_path' => '',
+    'proxy' => '',
+    'sftp_username' => '',
+    'sftp_password' => '',
+    'batch_url' => '',
+    'tcp_port' => '',
+    'tcp_ssl' => '',
+    'tcp_timeout' => '',
+    'print_xml' => '',
+    'orderId' => $user->uid . '-' . time(),
+    'accountNumber' => $params['credit_card']['number'],
+    'card' => array(
+      'number' => $params['credit_card']['number'],
+  	  'expDate' => $params['credit_card']['exp_month'] . substr($params['credit_card']['exp_year'], 2, 4),
+  	  'cardValidationNum' => $params['credit_card']['code'],
+  		'type' => $api->cardTypes($params['credit_card']['type']),
+    ),
+  );
+
+  $initilaize = new litle\sdk\LitleOnlineRequest();
+  $response = $initilaize->registerTokenRequest($data);
+  $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+  variable_set('cof_payload_add', $payload);
+
+  $response_code = litle\sdk\XmlParser::getNode($response,'response');
+  $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
+  $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
+  $message = litle\sdk\XmlParser::getNode($response,'message');
+  $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
+  $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
+  $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
+  $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+  $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+
+  //$customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
+  $card_data = commerce_cardonfile_new();
+  $card_data->uid = $user->uid;
+  $card_data->payment_method = 'vantiv_direct';
+  $card_data->instance_id = 'vantiv_direct|commerce_payment_vantiv_direct';
+  $card_data->card_type = $params['credit_card']['type'];
+  $card_data->card_name = $params['credit_card']['owner'];
+  $card_data->card_number = drupal_substr($params['credit_card']['number'], -4);
+  $card_data->card_exp_month = $params['credit_card']['exp_month'];
+  $card_data->card_exp_year = $params['credit_card']['exp_year'];
+  $card_data->status = 1;
+  commerce_cardonfile_save($card_data);
+  return $card_data;
+}
+
 /**
  * Implements hook_menu().
  */
