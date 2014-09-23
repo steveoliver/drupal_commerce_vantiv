@@ -298,6 +298,7 @@ class VantivApi {
         $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
         $card_data = commerce_cardonfile_new();
         $card_data->uid = !empty($order->uid) ? $order->uid : $user->uid;
+        $card_data->remote_id = $litleToken;
         $card_data->payment_method = $payment_method['method_id'];
         $card_data->instance_id = $payment_method['instance_id'];
         $card_data->card_type = !empty($card_info['credit_card']['type']) ? strtolower($card_info['credit_card']['type']) : '';

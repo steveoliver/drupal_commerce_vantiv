@@ -10,8 +10,7 @@
  * Submit callback for commerce_vantiv.
  */
 function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
-    dsm($pane_values, 'pane_values');
-
+    $cardonfile_capable = module_exists('commerce_cardonfile') && !empty($payment_method['settings']['cardonfile']);
     module_load_include('inc', 'commerce_payment', 'includes/commerce_payment.credit_card');
     $card_types = commerce_vantiv_direct_all_card_names();
     foreach ($card_types as $key => $value) {
@@ -24,9 +23,44 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       'owner' => '',
     );
 
+
     $form = commerce_payment_credit_card_form($credit_card_settings);
     $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
     $form['credit_card']['type']['#options'] = $card_types;
+
+      if ($cardonfile_capable) {
+        $storage = variable_get('commerce_cardonfile_storage', 'opt-in');
+        if (in_array($storage, array('opt-in', 'opt-out')) && !$payment_method['settings']['continuous']) {
+          /*$form['credit_card']['cardonfile_store'] = array(
+            '#type' => 'checkbox',
+            '#title' => t('Store this credit card on file for future use.'),
+            '#default_value' => $storage == 'opt-out',
+          );*/
+        }
+        else {
+          $form['credit_card']['cardonfile_store'] = array(
+            '#type' => 'hidden',
+            '#value' => TRUE,
+          );
+        }
+
+        $form['cardonfile_instance_default'] = array(
+          '#type' => 'checkbox',
+          '#title' => t('Set as your default card'),
+          //'#default_value' => $instance_default_default_value || $force_instance_default,
+          //'#access' => !$instance_default_default_value,
+          //'#disabled' => $force_instance_default,
+          '#states' => array(
+            'invisible' => array(
+              ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+            ),
+            'visible' => array(
+              ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+            ),
+          ),
+        );
+      }
+
 
     return $form;
 }
@@ -52,7 +86,7 @@ function commerce_vantiv_direct_all_card_names() {
  */
 function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
   dsm($pane_values, '$pane_values');
-  if (empty($pane_values['credit_card']['number'])) {
+  if (empty($pane_values['credit_card']['number']) and empty($pane_values['cardonfile'])) {
     form_set_error('number');
     return FALSE;
   }
@@ -69,8 +103,13 @@ function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane
 function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
   $api = commerce_vantiv_api_object();
   $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
-  if(!empty($pane_values['cardonfile_store']) and $pane_values['cardonfile_store'] == TRUE) {
+  if(!empty($pane_values['credit_card']['cardonfile_store']) and $pane_values['credit_card']['cardonfile_store'] == TRUE) {
     $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);
+  }
+  elseif(!empty($pane_values['cardonfile']) and is_numeric($pane_values['cardonfile']) == TRUE) {
+    // Load the card.
+    $card = commerce_cardonfile_load($pane_values['cardonfile']);
+    $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', $card->remote_id);
   }
   else {
     $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);

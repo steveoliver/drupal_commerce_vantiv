@@ -141,6 +141,7 @@ function commerce_vantiv_cardonfile_create() {
   //$customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
   $card_data = commerce_cardonfile_new();
   $card_data->uid = $user->uid;
+  $card_data->remote_id = $litleToken;
   $card_data->payment_method = 'vantiv_direct';
   $card_data->instance_id = 'vantiv_direct|commerce_payment_vantiv_direct';
   $card_data->card_type = $params['credit_card']['type'];
