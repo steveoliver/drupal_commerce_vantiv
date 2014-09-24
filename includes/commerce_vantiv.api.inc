@@ -17,12 +17,19 @@ class VantivApi {
     $this->logs = !empty($settings['logs']) ? trim($settings['logs']) : '';
   }
 
+  /**
+   * Loads the library functions needed to process transactions.
+   */
   public function libraryLoad() {
     define('STDIN',fopen("php://stdin","r"));
     $library = libraries_info('litle');
     $load_library = libraries_load('litle');
     libraries_load_files($load_library);
   }
+
+  /**
+   * Process direct payments.
+   */
   public function directPayments($customer_profile, $order, $card_info, $payment_method, $amount = '') {
     $load_library = self::libraryLoad();
     $currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;

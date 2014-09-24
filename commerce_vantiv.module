@@ -71,6 +71,9 @@ function commerce_vantiv_commerce_payment_method_info() {
   return $payment_methods;
 }
 
+/**
+ * Charges card on file with given amount.
+ */
 function commerce_vantiv_cardonfile_charge($payment_method, $card_data, $order, $charge = NULL) {
   $api = commerce_vantiv_api_object();
   $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
@@ -93,6 +96,9 @@ function commerce_vantiv_cardonfile_charge($payment_method, $card_data, $order, 
   return TRUE;
 }
 
+/**
+ * Updates card on file.
+ */
 function commerce_vantiv_cardonfile_update() {
   if (!empty($_POST)) {
     $params = $_POST;
@@ -103,10 +109,16 @@ function commerce_vantiv_cardonfile_update() {
   return TRUE;
 }
 
+/**
+ * Deletes card on file.
+ */
 function commerce_vantiv_cardonfile_delete() {
   return TRUE;
 }
 
+/**
+ * Creates card on file.
+ */
 function commerce_vantiv_cardonfile_create() {
   global $user;
   if (!empty($_POST)) {
@@ -353,6 +365,9 @@ function commerce_vantiv_settings_form($settings = NULL) {
   return $form;
 }
 
+/**
+ * Loads the last saved transaction.
+ */
 function commerce_vantiv_load_last_saved_transaction() {
   global $user;
   $query = new EntityFieldQuery();
