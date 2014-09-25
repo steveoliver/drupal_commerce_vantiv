@@ -92,7 +92,17 @@ function commerce_vantiv_cardonfile_charge($payment_method, $card_data, $order, 
     $amount = '';
   }
 
-  $result = $api->directPayments($customer_profile, $order, $card_info = '', $payment_method, $amount, $card_data->remote_id);
+  if (is_object($card_data) == TRUE) {
+    foreach($card_data as $k => $v) {
+      $card_array[$k] = $v;
+    }
+    variable_set('card_data', $card_array);
+  }
+  else {
+    variable_set('card_data', $card_data);
+  }
+
+  $result = $api->directPayments($customer_profile, $order, $card_data, $payment_method, $amount, $card_data->remote_id);
   return TRUE;
 }
 
@@ -407,7 +417,7 @@ function commerce_vantiv_commerce_payment_transaction_status_info() {
 
   $statuses[COMMERCE_VANTIV_STATUS_CAPTURE] = array(
     'status' => COMMERCE_VANTIV_STATUS_CAPTURE,
-    'title' => t('Captured'),
+    'title' => t('Capture'),
     'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-success.png',
     'total' => TRUE,
   );
