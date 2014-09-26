@@ -110,12 +110,90 @@ function commerce_vantiv_cardonfile_charge($payment_method, $card_data, $order, 
  * Updates card on file.
  */
 function commerce_vantiv_cardonfile_update() {
+  global $user;
   if (!empty($_POST)) {
     $params = $_POST;
   }
   else {
     $params = $_GET;
   }
+  $card = commerce_cardonfile_load($params['hidden_cardid']);
+  if (is_array($card) == TRUE) {
+    $card = reset($card);
+  }
+
+  $token = $card->remote_id;
+  // Create initial transaction.
+  $api = commerce_vantiv_api_object();
+  $api->libraryLoad();
+  $data = array(
+    'user' => $api->user,
+    'password' => $api->password,
+    'merchantId' => $api->merchant_id,
+    'reportGroup' => 'rtpGrp',
+    'url' => $api->accountLinks($api->account),
+    'litle_requests_path' => $api->accountLinks($api->account),
+    'batch_requests_path' => '',
+    'proxy' => '',
+    'sftp_username' => '',
+    'sftp_password' => '',
+    'batch_url' => '',
+    'tcp_port' => '',
+    'tcp_ssl' => '',
+    'tcp_timeout' => '',
+    'print_xml' => '',
+    // Fake order.
+    'orderId' => $user->uid . '-' . time(),
+    'orderSource'=>'ecommerce',
+    'amount' => 10,
+    'accountNumber' => $params['credit_card']['number'],
+    'card' => array(
+      'number' => $params['credit_card']['number'],
+  	  'expDate' => $params['credit_card']['exp_month'] . substr($params['credit_card']['exp_year'], 2, 4),
+  	  'cardValidationNum' => $params['code'],
+  		'type' => $api->cardTypes($params['credit_card']['type']),
+    ),
+   /* 'token' => array(
+      'litleToken' => $token,
+    ),*/
+  );
+
+  $initilaize = new litle\sdk\LitleOnlineRequest();
+  $response = $initilaize->saleRequest($data);
+  $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+  variable_set('update_card', $payload);
+  // $result = $api->directPayments($customer_profile, $order, $card_data, $payment_method, $amount, $card_data->remote_id);
+
+  // Get response information.
+  $response_code = litle\sdk\XmlParser::getNode($response,'response');
+  $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
+  $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
+  $message = litle\sdk\XmlParser::getNode($response,'message');
+  $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
+  $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
+  $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
+  $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+
+  $saleResponse = litle\sdk\XmlParser::getNode($response, 'saleResponse');
+  $accountUpdater = litle\sdk\XmlParser::getNode($response, 'accountUpdater');
+  $newCardInfo = litle\sdk\XmlParser::getNode($response, 'newCardInfo');
+  $type = litle\sdk\XmlParser::getNode($response, 'type');
+  $number = litle\sdk\XmlParser::getNode($response, 'number');
+  $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
+
+  if (!empty($accountUpdater) and !empty($newCardInfo)) {
+    $card_type = $api->cardTypes('', $type);
+    $exp_month = substr($expDate, 1, 2);
+    $exp_year = substr($expDate, -2, 2);
+    $card->card_name = $params['credit_card']['owner'];
+    $card->card_number = substr($number, -4, 4);
+    $card->type = !empty($card_type) ? $card_type : '';
+    $card->card_exp_month = $exp_month;
+    $card->card_exp_year = $exp_year;
+    commerce_cardonfile_save($card);
+    return $card;
+  }
+
   return TRUE;
 }
 
@@ -137,7 +215,7 @@ function commerce_vantiv_cardonfile_create() {
   else {
     $params = $_GET;
   }
-  dsm($params, 'params');
+
   $api = commerce_vantiv_api_object();
   $api->libraryLoad();
 

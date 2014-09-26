@@ -237,6 +237,13 @@ class VantivApi {
     $saleResponse = litle\sdk\XmlParser::getNode($response,'saleResponse');
     $registerTokenResponse = litle\sdk\XmlParser::getNode($response,'registerTokenResponse');
 
+    // Get new data from account updater if changes were made.
+    $accountUpdater = litle\sdk\XmlParser::getNode($response, 'accountUpdater');
+    $newCardInfo = litle\sdk\XmlParser::getNode($response, 'newCardInfo');
+    $type = litle\sdk\XmlParser::getNode($response, 'type');
+    $number = litle\sdk\XmlParser::getNode($response, 'number');
+    $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
+
     if (!empty($authorizationResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'authorizationResponse', 'id');
       $payload_attribute = 'authorizationResponse';
@@ -314,6 +321,16 @@ class VantivApi {
         $card_data->card_exp_month = $card_info['credit_card']['exp_month'];
         $card_data->card_exp_year = $card_info['credit_card']['exp_year'];
         $card_data->status = 1;
+        if (!empty($accountUpdater) and !empty($newCardInfo)) {
+          $card_type = $api->cardTypes('', $type);
+          $exp_month = substr($expDate, 1, 2);
+          $exp_year = substr($expDate, -2, 2);
+          $card_data->card_name = $params['credit_card']['owner'];
+          $card_data->card_number = substr($number, -4, 4);
+          $card_data->type = !empty($card_type) ? $card_type : '';
+          $card_data->card_exp_month = $exp_month;
+          $card_data->card_exp_year = $exp_year;
+        }
         commerce_cardonfile_save($card_data);
         $card_info['cardonfile_store'] = '';
         $this->directPayments($customer_profile, $order, '', $payment_method, '', $litleToken);
