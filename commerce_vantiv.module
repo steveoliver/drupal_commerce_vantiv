@@ -68,6 +68,20 @@ function commerce_vantiv_commerce_payment_method_info() {
     ),
   );
 
+  $payment_methods['vantiv_echeck'] = array(
+    'base' => 'commerce_vantiv',
+    'title' => t('Vantiv echeck payment'),
+    'short_title' => t('Vantiv echeck payment'),
+    'display_title' => t('Vantiv echeck payment'),
+    'description' => t('Vantiv echeck payment'),
+    'terminal' => FALSE,
+    'offsite' => FALSE,
+    'offsite_autoredirect' => FALSE,
+    'active' => FALSE,
+    'callback' => array(),
+    'file' => 'includes/commerce_vantiv_direct.inc',
+  );
+
   return $payment_methods;
 }
 

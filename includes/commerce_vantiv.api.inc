@@ -107,23 +107,52 @@ class VantivApi {
       );
     }
     $initilaize = new litle\sdk\LitleOnlineRequest();
+    if ($echeck != TRUE) {
+      if ($this->transaction_type_process == 'pre_auth' /*and empty($card_info['credit_card']['cardonfile_store'])*/ and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
+        $response = $initilaize->authorizationRequest($billing_data);
+      }
+      elseif ($this->transaction_type_process == 'sale' /*and empty($card_info['credit_card']['cardonfile_store'])*/and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
+        $response = $initilaize->saleRequest($billing_data);
+      }
+      elseif (!empty($card_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE) {
+        $billing_data['accountNumber'] = $card_info['credit_card']['number'];
+        $response = $initilaize->registerTokenRequest($billing_data);
+      }
+      if (!empty($response)) {
+        $this->processDirectTransactions($response, $payment_method, '', $card_info);
+      }
+      else {
+        watchdog('commerce_vantiv', "An error occur with order# @order during the request, the server did not respond.", array('@order' => $order->order_id), WATCHDOG_ERROR);
+      }
+    }
+    elseif ($echeck == TRUE) {
+      if  (module_exists('commerce_shipping')) {
+        unset($customer_profile);
+        $customer_profile = commerce_customer_profile_load($order->commerce_customer_shipping['und'][0]['profile_id']);
+      }
+      $billing_data['shipToAddress'] = array(
+        'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
+        'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
+        'state' => '',
+        'email' => $order->mail,
+      );
 
-    if ($this->transaction_type_process == 'pre_auth' and empty($card_info['cardonfile_store'])) {
-      $response = $initilaize->authorizationRequest($billing_data);
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-    }
-    elseif ($this->transaction_type_process == 'sale' and empty($card_info['cardonfile_store'])) {
-      $response = $initilaize->saleRequest($billing_data);
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-    }
-    elseif (!empty($card_info['cardonfile_store']) and $card_info['cardonfile_store'] == TRUE) {
-      $billing_data['accountNumber'] = $card_info['credit_card']['number'];
-      $response = $initilaize->registerTokenRequest($billing_data);
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-    }
-    $response_code = litle\sdk\XmlParser::getNode($response, 'response');
+      $billing_data['echeck'] = array(
+        'accType' => $card_info['accType'],
+        'accNum' => $card_info['accNum'],
+        'routingNum' => $card_info['routingNum'],
+        'checkNum' => $card_info['checkNum'],
+      );
 
-    $this->processDirectTransactions($response, $payment_method, '', $card_info);
+      $response = $initilaize->echeckSaleRequest($billing_data);
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      if (!empty($response)) {
+        $this->processDirectTransactions($response, $payment_method, '', $card_info);
+      }
+      else {
+        watchdog('commerce_vantiv', "An error occur with order# @order during the request, the server did not respond.", array('@order' => $order->order_id), WATCHDOG_ERROR);
+      }
+    }
   }
 
   /**
@@ -236,6 +265,7 @@ class VantivApi {
     $authorizationResponse = litle\sdk\XmlParser::getNode($response,'authorizationResponse');
     $saleResponse = litle\sdk\XmlParser::getNode($response,'saleResponse');
     $registerTokenResponse = litle\sdk\XmlParser::getNode($response,'registerTokenResponse');
+    $echeckSalesResponse = litle\sdk\XmlParser::getNode($response,'echeckSalesResponse');
 
     // Get new data from account updater if changes were made.
     $accountUpdater = litle\sdk\XmlParser::getNode($response, 'accountUpdater');
@@ -257,8 +287,14 @@ class VantivApi {
       $payload_attribute = 'registerTokenResponse';
       $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
     }
-
-
+    if (!empty($echeckSalesResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
+      $payload_attribute = 'echeckSalesResponse';
+    }
+    elseif (!empty($echeckSalesResponse)) {
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+    }
     //If the transaction was approved.
     if ($response_code == '000') {
       if (!empty($order_id)) {
@@ -300,8 +336,8 @@ class VantivApi {
           if (!empty($message) and !empty($order)) {
             if ($this->logs == 0) {
               watchdog('commerce_vantiv', "The order# @order was cancelled, due to @message", array('@order' => $order->order_id, '@message' => $message), WATCHDOG_ERROR);
-              $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
             }
+            $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
           }
           drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
         }
