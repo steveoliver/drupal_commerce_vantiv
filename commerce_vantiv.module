@@ -551,3 +551,24 @@ function commerce_vantiv_commerce_payment_transaction_status_info() {
 
   return $statuses;
 }
+
+function commerce_vantiv_get_label($card) {
+  global $user;
+  $card_type = ucfirst($card->card_type);
+  switch ($card_type) {
+    case 'Checking':
+      $card_type = t('@account_type account', array('@account_type' => $card_type));
+      break;
+    case 'Savings':
+      $card_type = t('@account_type account', array('@account_type' => $card_type));
+      break;
+    case 'Corporate':
+      $card_type = t('@account_type account', array('@account_type' => $card_type));
+      break;
+    case 'Corp Savings':
+      $card_type = t('@account_type account', array('@account_type' => $card_type));
+      break;
+  }
+  $str = t('@card_type ending in @number', array('@card_type' => $card_type, '@number' => $card->card_number));
+  return $str;
+}

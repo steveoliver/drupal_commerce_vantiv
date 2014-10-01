@@ -10,5 +10,8 @@ dependencies[] = commerce_cart
 dependencies[] = commerce_checkout
 dependencies[] = commerce_order_ui
 
+files[] = includes/views/handlers/commerce_vantiv_handler_field_card_label.inc
+files[] = includes/views/handlers/commerce_vantiv_handler_field_card_exp.inc
+
 core = 7.x
 configure = admin/commerce/config/payment-methods
