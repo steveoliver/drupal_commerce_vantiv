@@ -5,7 +5,7 @@ function commerce_vantiv_requirements($phase) {
   // Ensure translations don't break at install time.
   $t = get_t();
 
-  $path_ogone = $_SERVER['DOCUMENT_ROOT'] . '/sites/all/libraries/litle';
+  $path_litle = $_SERVER['DOCUMENT_ROOT'] . '/sites/all/libraries/litle';
   //Checks for the library during instalation process.
   if ($phase == 'install' && module_exists('libraries')) {
     $library = libraries_get_libraries();
@@ -14,7 +14,7 @@ function commerce_vantiv_requirements($phase) {
       $library_path = $value;
     }
     // Check if the expected library path exists.
-    if (!empty($library_name) and $library_name == 'litle' && (file_exists($path_ogone) === TRUE or (!empty($library_path) and file_exists($library_path) == TRUE))) {
+    if (!empty($library_name) and $library_name == 'litle' && (file_exists($path_litle) === TRUE or (!empty($library_path) and file_exists($library_path) == TRUE))) {
       $path = libraries_get_path('litle');
       $requirements['litle'] = array(
         'title' => $t('Litle library'),
@@ -22,7 +22,7 @@ function commerce_vantiv_requirements($phase) {
       );
       return $requirements;
     }
-    elseif (empty($library) or file_exists($path_ogone) != TRUE) {
+    elseif (empty($library) or file_exists($path_litle) != TRUE) {
       $requirements['litle'] = array(
         'title' => $t('Litle PHP library'),
         'description' => $t('Litle PHP library is required.'),
@@ -58,7 +58,7 @@ function commerce_vantiv_requirements($phase) {
       );
       return $requirements;
     }
-    elseif (empty($library) or (file_exists($path_ogone) != TRUE and file_exists($library_path) !== TRUE)) {
+    elseif (empty($library) or (file_exists($path_litle) != TRUE and file_exists($library_path) !== TRUE)) {
       $requirements['litle'] = array(
         'title' => $t('Litle PHP library'),
         'description' => $t('Litle PHP library is required.'),

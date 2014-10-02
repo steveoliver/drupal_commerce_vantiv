@@ -31,7 +31,7 @@ class VantivApi {
    * Process direct payments.
    */
   public function directPayments($customer_profile, $order, $card_info, $payment_method, $amount = '') {
-    $load_library = self::libraryLoad();
+      $load_library = $this->libraryLoad();
     $currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
     $card_owner_name = $customer_profile->commerce_customer_address['und'][0]['name_line'];
@@ -55,6 +55,7 @@ class VantivApi {
         'print_xml' => '',
         'orderId' => $order->order_id,
   		  'amount' => $charge_amount,
+        'email' => 'nobody@litle.com',
         //id of auth or sale response in the xml tag.
         'id'=> $order->order_id . '|' . time(),
   		  'orderSource'=>'ecommerce',
@@ -66,11 +67,22 @@ class VantivApi {
   		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
   		  'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
   		  'card' => array(
-  		  'number' => $card_info['credit_card']['number'],
-  		  'expDate' => $card_info['credit_card']['exp_month'] . substr($card_info['credit_card']['exp_year'], 2, 4),
-  		  'cardValidationNum' => $card_info['credit_card']['code'],
-  		  'type' => $this->cardTypes($card_info['credit_card']['type'])),
+    		  'number' => (!empty($card_info['credit_card']['number'])) ? $card_info['credit_card']['number'] : '',
+    		  'cardValidationNum' => (!empty($card_info['credit_card']['code'])) ? $card_info['credit_card']['code'] : '',
+  		  ),
       );
+
+      if (!empty($card_info['credit_card']['number']) and !empty($card_info['credit_card']['exp_month']) and !empty($card_info['credit_card']['exp_year'])) {
+        $billing_data['card']['expDate'] = $card_info['credit_card']['exp_month'] . substr($card_info['credit_card']['exp_year'], 2, 4);
+        $billing_data['card']['type'] = $this->cardTypes($card_info['credit_card']['type']);
+      }
+
+      /*if (!empty($fraud_id)) {
+        $billing_data['advancedFraudChecks'] = array(
+          'threatMetrixSessionId' => $fraud_id,
+        );
+        $billing_data['threatMetrixSessionId'] = $fraud_id;
+      }*/
     }
     else {
       $billing_data = array(
@@ -94,19 +106,29 @@ class VantivApi {
         //id of auth or sale response in the xml tag.
         'id'=> $order->order_id . '|' . time(),
   		  'orderSource'=>'ecommerce',
-  		  'billToAddress'=>array(
+  		  'billToAddress' => array(
   		  'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
   	    'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
   		  'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
   		  'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
   		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
   		  'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
-        'token' => array(
+        /*'token' => array(
           'litleToken' => $token,
-        ),
+        ),*/
       );
+      if ($payment_method['method_id'] == 'vantiv_direct') {
+        $billing_data['token'] = array(
+          'litleToken' => $token,
+        );
+      }
     }
+
+
+
+
     $initilaize = new litle\sdk\LitleOnlineRequest();
+    // Check if this is credit card transaction.
     if ($echeck != TRUE) {
       if ($this->transaction_type_process == 'pre_auth' /*and empty($card_info['credit_card']['cardonfile_store'])*/ and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
         $response = $initilaize->authorizationRequest($billing_data);
@@ -125,29 +147,47 @@ class VantivApi {
         watchdog('commerce_vantiv', "An error occur with order# @order during the request, the server did not respond.", array('@order' => $order->order_id), WATCHDOG_ERROR);
       }
     }
+    // If this is an eCheck transaction.
     elseif ($echeck == TRUE) {
       if  (module_exists('commerce_shipping')) {
         unset($customer_profile);
         $customer_profile = commerce_customer_profile_load($order->commerce_customer_shipping['und'][0]['profile_id']);
       }
+
       $billing_data['shipToAddress'] = array(
         'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
         'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
         'state' => '',
         'email' => $order->mail,
       );
-
-      $billing_data['echeck'] = array(
-        'accType' => $card_info['accType'],
-        'accNum' => $card_info['accNum'],
-        'routingNum' => $card_info['routingNum'],
-        'checkNum' => $card_info['checkNum'],
-      );
-
-      $response = $initilaize->echeckSaleRequest($billing_data);
+      if (empty($token)) {
+        $billing_data['echeck'] = array(
+          'accType' => $card_info['accType'],
+          'accNum' => $card_info['accNum'],
+          'routingNum' => $card_info['routingNum'],
+          'checkNum' => $card_info['checkNum'],
+        );
+      }
+      elseif (!empty($token) and (!empty($card_info['new_card_id']) or !empty($card_info['cardonfile']))) {
+        $card = !empty($card_info['new_card_id']) ? commerce_cardonfile_load($card_info['new_card_id']) : commerce_cardonfile_load($card_info['cardonfile']);
+        $billing_data['echeckToken'] = array(
+          'litleToken' => $token,
+          'accType' => $card_info['accType'],
+          'routingNum' => $card_info['routingNum'],
+          'checkNum' => $card_info['checkNum'],
+        );
+      }
+      if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
+        $billing_data['accountNumber'] = $card_info['accNum'];
+        $response = $initilaize->registerTokenRequest($billing_data);
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      }
+      else {
+        $response = $initilaize->echeckSaleRequest($billing_data);
+      }
       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
       if (!empty($response)) {
-        $this->processDirectTransactions($response, $payment_method, '', $card_info);
+        return $this->processDirectTransactions($response, $payment_method, '', $card_info);
       }
       else {
         watchdog('commerce_vantiv', "An error occur with order# @order during the request, the server did not respond.", array('@order' => $order->order_id), WATCHDOG_ERROR);
@@ -287,16 +327,18 @@ class VantivApi {
       $payload_attribute = 'registerTokenResponse';
       $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
     }
+    if (!empty($saleResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'saleResponse', 'id');
+      $payload_attribute = 'saleResponse';
+    }
     if (!empty($echeckSalesResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
       $payload_attribute = 'echeckSalesResponse';
     }
-    elseif (!empty($echeckSalesResponse)) {
-      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-      $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
-    }
+    //Get the payload.
+    $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     //If the transaction was approved.
-    if ($response_code == '000') {
+    if ($response_code == '000' || $response_code == '801') {
       if (!empty($order_id)) {
         $order = commerce_order_load($order_id);
       }
@@ -305,7 +347,7 @@ class VantivApi {
       }
       // If the transaction is not registerTokenResponse.
       if (empty($registerTokenResponse)) {
-        $transaction = commerce_payment_transaction_new('vantiv_direct', $order->order_id);
+        $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
         $transaction->instance_id = $payment_method['instance_id'];
         $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
         $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
@@ -328,7 +370,7 @@ class VantivApi {
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
-        elseif (!empty($saleResponse)) {
+        elseif (!empty($echeckSalesResponse)) {
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
@@ -344,7 +386,7 @@ class VantivApi {
         commerce_payment_transaction_save($transaction);
       }
       // Save card on file if required.
-      if (!empty($litleToken)) {
+      if (!empty($litleToken) and !empty($registerTokenResponse)) {
         $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
         $card_data = commerce_cardonfile_new();
         $card_data->uid = !empty($order->uid) ? $order->uid : $user->uid;
@@ -353,11 +395,15 @@ class VantivApi {
         $card_data->instance_id = $payment_method['instance_id'];
         $card_data->card_type = !empty($card_info['credit_card']['type']) ? strtolower($card_info['credit_card']['type']) : '';
         $card_data->card_name = !empty($customer_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line']) ? $customer_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] : $order['credit_card']['owner']['#value'];
-        $card_data->card_number = drupal_substr($card_info['credit_card']['number'], -4);
-        $card_data->card_exp_month = $card_info['credit_card']['exp_month'];
-        $card_data->card_exp_year = $card_info['credit_card']['exp_year'];
+        $card_data->card_number = !empty($card_info['credit_card']['number']) ? drupal_substr($card_info['credit_card']['number'], -4) : '';
+        $card_data->card_exp_month = !empty($card_info['credit_card']['exp_month']) ? $card_info['credit_card']['exp_month'] : '';
+        $card_data->card_exp_year = !empty($card_info['credit_card']['exp_year']) ? $card_info['credit_card']['exp_year'] : '';
         $card_data->status = 1;
-        if (!empty($accountUpdater) and !empty($newCardInfo)) {
+        if ($payment_method['method_id'] == 'vantiv_echeck') {
+          $card_data->card_type = $card_info['accType'];
+          $card_data->card_number = drupal_substr($card_info['accNum'], -4);
+        }
+        if (!empty($accountUpdater) and !empty($newCardInfo) and $payment_method['method_id'] != 'vantiv_echeck') {
           $card_type = $api->cardTypes('', $type);
           $exp_month = substr($expDate, 1, 2);
           $exp_year = substr($expDate, -2, 2);
@@ -367,9 +413,24 @@ class VantivApi {
           $card_data->card_exp_month = $exp_month;
           $card_data->card_exp_year = $exp_year;
         }
+        elseif ($payment_method['method_id'] == 'vantiv_echeck') {
+          $card_data->card_exp_month = '12';
+          $card_data->card_exp_year = '2100';
+        }
         commerce_cardonfile_save($card_data);
         $card_info['cardonfile_store'] = '';
-        $this->directPayments($customer_profile, $order, '', $payment_method, '', $litleToken);
+        if ($payment_method['method_id'] == 'vantiv_echeck') {
+          $order = commerce_order_load($order_id);
+          $card = commerce_vantiv_load_last_saved_cof($order->uid);
+          $card_info['new_card_id'] = $card->card_id;
+          $card_info['cardonfile'] = '';
+          $card_info['credit_card']['cardonfile_store'] = '';
+          return $this->directPayments($customer_profile, $order, $card_info, $payment_method, '', $litleToken, '', TRUE, 1);
+
+        }
+        elseif ($payment_method['method_id'] == 'vantiv_direct') {
+          return $this->directPayments($customer_profile, $order, '', $payment_method, '', $litleToken);
+        }
       }
     }
   }

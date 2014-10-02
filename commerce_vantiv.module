@@ -462,9 +462,29 @@ function commerce_vantiv_settings_form($settings = NULL) {
     ),
   );
 
+  $form['validate'] = array(
+    '#type' => 'hidden',
+    '#title' => t('validate'),
+    '#description' => t('validate'),
+    '#element_validate' => array('commerce_vantiv_connect_validate_element'),
+  );
+
   //$form['#submit'][] = 'commerce_vantiv_settings_form_submit';
 
   return $form;
+}
+
+/**
+ * Validates the settings data for the payment method
+ */
+function commerce_vantiv_connect_validate_element($element, $form, &$form_state) {
+  $direct_payment = rules_config_load('commerce_payment_vantiv_direct');
+  $direct_payment->weight = -10;
+  $direct_payment->save();
+  $echeck_payment = rules_config_load('commerce_payment_vantiv_echeck');
+  $echeck_payment->weight = 10;
+  $echeck_payment->save();
+  rules_clear_cache();
 }
 
 /**
@@ -485,6 +505,26 @@ function commerce_vantiv_load_last_saved_transaction() {
     }
   }
   return $return;
+}
+
+/**
+ * Loads the last saved cof.
+ */
+function commerce_vantiv_load_last_saved_cof($user_id) {
+  global $user;
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'commerce_cardonfile')
+  ->propertyCondition('uid', $user_id);
+  $query->propertyOrderBy('created', 'DESC');
+  $query->range(0, 1);
+  $return = array();
+  $result = $query->execute();
+    if (!empty($result['commerce_cardonfile'])) {
+    foreach ($result['commerce_cardonfile'] as $card) {
+      $return[] = entity_load_single('commerce_cardonfile', $card->card_id);
+    }
+  }
+  return $return ? reset($return) : FALSE;
 }
 
 /**
