@@ -6,12 +6,22 @@
  * Payment method instance id: vantiv_direct|commerce_payment_vantiv_direct
  */
 
+/*
+function commerce_vantiv_commerce_payment_credit_card_form_alter(&$form, &$form_state) {
+  dsm($form_state, '$payment form form_state hook_TYPE_alter');
+  dsm($form, '$payment_form form hook_TYPE_alter');
+}
+*/
+
+function commerce_vantiv_commerce_vantiv_submit_form_alter(&$form, &$form_state) {
+  /*dsm($form_state, '$form_state hook_TYPE_alter');
+  dsm($form, '$form hook_TYPE_alter');*/
+}
+
 /**
  * Alters the checkout payment form.
  */
 function commerce_vantiv_commerce_cardonfile_checkout_pane_form_alter(&$form, &$form_state) {
- dsm($form, 'form');
-  dsm($form_state, 'form_state');
   if ($form_state['commerce_payment']['payment_method']['#default_value'] == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
     // Change the label for card storage.
     $form['credit_card']['cardonfile_store']['#title'] = t('Store this check on file for further use.');
@@ -29,6 +39,7 @@ function commerce_vantiv_commerce_cardonfile_checkout_pane_form_alter(&$form, &$
       $form['cardonfile']['#default_value'] = 'new';
     }
   }
+  //dsm($form, 'form altered');
 }
 
 /**
@@ -124,12 +135,21 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
         'Corporate'  => t('Corporate'),
         'Corp Savings'  => t('Corp Savings'),
       ),
+      /*'#states' => array(
+        'visible' => array(
+          ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+        ),
+        'invisible' => array(
+          ':input[name$="[cardonfile_store_card]"]' => array('checked' => TRUE),
+        ),
+      ),*/
     );
 
     $form['accNum'] = array(
       '#type' => 'textfield',
       '#title' => t('Account number') . ' <span class="star_required">*</span>',
       '#default_value' => '',
+      //'#required' => TRUE,
       '#attributes' => array('autocomplete' => 'off'),
       '#maxlength' => 17,
       '#size' => 17,
@@ -147,9 +167,18 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       '#type' => 'textfield',
       '#title' => t('Routing number') . ' <span class="star_required">*</span>',
       '#default_value' => '',
+      //'#required' => TRUE,
       '#attributes' => array('autocomplete' => 'off'),
       '#maxlength' => 9,
       '#size' => 9,
+      /*'#states' => array(
+        'visible' => array(
+          ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+        ),
+        'invisible' => array(
+          ':input[name$="[cardonfile_store_card]"]' => array('checked' => TRUE),
+        ),
+      ),*/
     );
 
     $form['checkNum'] = array(
@@ -157,8 +186,17 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       '#title' => t('Check number') . ' <span class="star_required">*</span>',
       '#default_value' => '',
       '#attributes' => array('autocomplete' => 'off'),
+      //'#required' => TRUE,
       '#maxlength' => 15,
       '#size' => 15,
+      /*'#states' => array(
+        'visible' => array(
+          ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+        ),
+        'invisible' => array(
+          ':input[name$="[cardonfile_store_card]"]' => array('checked' => TRUE),
+        ),
+      ),*/
     );
 
       $form['cardonfile_instance_default']['#states'] = array(
@@ -227,6 +265,9 @@ function commerce_vantiv_direct_all_card_names() {
  * Validates the cardholder data.
  */
 function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
+
+ /*     form_error($pane_form['accNum'], 'The account number should be longer than 4 characters.');
+      return false;*/
   if ($payment_method['method_id'] == 'vantiv_direct') {
     if (empty($pane_values['credit_card']['number']) and empty($pane_values['cardonfile'])) {
       form_set_error('number');
@@ -234,7 +275,9 @@ function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane
     }
     $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
   }
+  //return false;
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
+
     if (strlen($pane_values['accNum']) < 4 and (!empty($pane_values['cardonfile']) and $pane_values['cardonfile'] == 'new')) {
       form_error($pane_form['accNum'], 'The account number should be longer than 4 characters.');
       return false;
@@ -278,6 +321,7 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
   // Direct transaction without using card on file.
   if ($payment_method['method_id'] == 'vantiv_direct') {
     if(!empty($pane_values['credit_card']['cardonfile_store']) and $pane_values['credit_card']['cardonfile_store'] == TRUE) {
+
       if (!empty($pane_values['hidden_fraud_kit'])) {
         $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit']);
       }
@@ -287,11 +331,14 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
     }
     elseif(!empty($pane_values['cardonfile']) and is_numeric($pane_values['cardonfile']) == TRUE) {
       // Load the card.
+
       $card = commerce_cardonfile_load($pane_values['cardonfile']);
       $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', $card->remote_id);
     }
     else {
+      //$result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);
       if (!empty($pane_values['hidden_fraud_kit'])) {
+
         $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit']);
       }
       else {
@@ -302,25 +349,32 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
     // Saves a new account.
     if(!empty($pane_values['credit_card']['cardonfile_store']) and $pane_values['credit_card']['cardonfile_store'] == TRUE) {
-      $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', '', TRUE);
+      /*if (!empty($pane_values['hidden_fraud_kit'])) {
+        $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit']);
+      }
+      else {*/
+        $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', '', TRUE);
+     // }
     }
     // Use already saved account.
     elseif(!empty($pane_values['cardonfile']) and is_numeric($pane_values['cardonfile']) == TRUE) {
       // Load the card.
+
       $card = commerce_cardonfile_load($pane_values['cardonfile']);
       $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', $card->remote_id, '', TRUE);
     }
     else {
       // No saved accounts to be used, just process the transaction.
-      $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', '', TRUE);
+      /*if (!empty($pane_values['hidden_fraud_kit'])) {
+        variable_set('direct', '1');
+        $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit']);
+      }
+      else {*/
+        $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', '', TRUE);
+      //}
     }
 
   }
   return $result;
 }
-
-
-
-
-
 
