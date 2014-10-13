@@ -78,7 +78,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
         else {
           $form['credit_card']['cardonfile_store'] = array(
             '#type' => 'hidden',
-            '#value' => TRUE,
+            '#value' => '',
           );
         }
 
