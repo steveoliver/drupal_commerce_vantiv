@@ -69,11 +69,11 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       if ($cardonfile_capable) {
         $storage = variable_get('commerce_cardonfile_storage', 'opt-in');
         if (in_array($storage, array('opt-in', 'opt-out')) && !$payment_method['settings']['continuous']) {
-          /*$form['credit_card']['cardonfile_store'] = array(
+          $form['credit_card']['cardonfile_store'] = array(
             '#type' => 'checkbox',
             '#title' => t('Store this credit card on file for future use.'),
             '#default_value' => $storage == 'opt-out',
-          );*/
+          );
         }
         else {
           $form['credit_card']['cardonfile_store'] = array(
@@ -96,7 +96,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
         );
       }
 
-   $session_id =  'ASDFG-AXXXXAB999';
+   /*$session_id =  'ASDFG-AXXXXAB999';
    $form['hidden_fraud_kit'] = array(
      '#type' => 'hidden',
      '#title' => t('Hidden element.'),
@@ -120,7 +120,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
         <!- End profiling tags -->',
      '#default_value' => $session_id,
      '#value' => $session_id,
-   );
+   );*/
   }
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
     $form['#attached']['css'] = array(

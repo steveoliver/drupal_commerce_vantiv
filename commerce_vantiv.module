@@ -21,6 +21,15 @@ function commerce_vantiv_views_api() {
 }
 
 /**
+ * Implements hook_menu_alter().
+ */
+function commerce_vantiv_menu_alter(&$items) {
+  $items['user/%user/cards/add']['title'] = t('Add card/echeck');
+  $items['user/%user/cards/add/' . drupal_hash_base64('vantiv_echeck|commerce_payment_vantiv_echeck')]['title'] = t('Add an echeck for payments with Vantiv echeck payment');
+  return $items;
+}
+
+/**
  * Implements hook_libraries_info().
  */
 function commerce_vantiv_libraries_info() {
@@ -275,6 +284,15 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
         '#default_value' => FALSE,
         '#weight' => '95',
       );
+
+      if (strstr(current_path(), 'edit') == TRUE ) {
+        $form['submit']['#value'] = t('Update echeck');
+        $form['credit_card']['cardonfile_instance_default']['#title'] = t('Use as default echeck for payments with %method', array('%method' => $payment_method['display_title']));
+      }
+      elseif (strstr(current_path(), 'add') == TRUE ) {
+        $form['credit_card']['cardonfile_instance_default']['#title'] = t('Use as default echeck for payments with %method', array('%method' => $payment_method['display_title']));
+        $form['submit']['#value'] = t('Add echeck');
+      }
 
       $form['credit_card']['cardonfile_instance_default']['#weight'] = '99';
       $form['submit']['#weight'] = 100;
@@ -562,7 +580,7 @@ function commerce_vantiv_cardonfile_create() {
     );
   }
   elseif ($params['validate'] == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
-    $data['echeck'] = array(
+    $data['echeckForToken'] = array(
       'accType' => $params['credit_card']['type'],
       'accNum' => $params['credit_card']['number'],
       'routingNum' => $params['credit_card']['routingNum'],
