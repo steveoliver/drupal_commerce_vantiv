@@ -129,12 +129,17 @@ class VantivApi {
 
 
     $initilaize = new litle\sdk\LitleOnlineRequest();
+
+    if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
+      $response = $initilaize->creditRequest($billing_data);
+    }
+
     // Check if this is credit card transaction.
     if ($echeck != TRUE) {
       if ($this->transaction_type_process == 'pre_auth' /*and empty($card_info['credit_card']['cardonfile_store'])*/ and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
         $response = $initilaize->authorizationRequest($billing_data);
       }
-      elseif ($this->transaction_type_process == 'sale' /*and empty($card_info['credit_card']['cardonfile_store'])*/and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
+      elseif ($this->transaction_type_process == 'sale' /*and empty($card_info['credit_card']['cardonfile_store'])*/and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store'])) and empty($card_info['credit_card']['credit'])) {
         $response = $initilaize->saleRequest($billing_data);
       }
       elseif (!empty($card_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE) {
@@ -299,6 +304,7 @@ class VantivApi {
     $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
     $message = litle\sdk\XmlParser::getNode($response,'message');
     $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
+    $creditResponse = litle\sdk\XmlParser::getNode($response,'creditResponse');
     $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
     $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
     $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
@@ -315,6 +321,11 @@ class VantivApi {
     $number = litle\sdk\XmlParser::getNode($response, 'number');
     $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
 
+    if (!empty($creditResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'creditResponse', 'id');
+      $payload_attribute = 'creditResponse';
+      $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+    }
     if (!empty($authorizationResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'authorizationResponse', 'id');
       $payload_attribute = 'authorizationResponse';
@@ -338,7 +349,6 @@ class VantivApi {
     }
     //Get the payload.
     $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-
     //If the transaction was approved.
     if ($response_code == '000' || $response_code == '801') {
       if (!empty($order_id)) {
@@ -360,9 +370,9 @@ class VantivApi {
         $transaction->data = array('auth_code' => $auth_code);
 
         //Get the payload.
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
         $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
+
 
         if (!empty($authorizationResponse)) {
           $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
@@ -376,6 +386,10 @@ class VantivApi {
         elseif (!empty($echeckSalesResponse)) {
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
+        }
+        elseif (!empty($creditResponse)) {
+          $transaction->status = COMMERCE_VANTIV_STATUS_CREDIT;
+          $transaction->message .= t('Credit:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
         else {
           if (!empty($message) and !empty($order)) {

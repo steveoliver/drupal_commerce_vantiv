@@ -239,7 +239,67 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
     }
 
   }
+  if (empty($checkout_pane) and !empty($payment_method)) {
+    $form['credit_card']['credit'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Credit this card'),
+      '#default_value' => FALSE,
+    );
 
+    $form = array_merge(commerce_vantiv_load_cof($order->uid, $payment_method), $form);
+    $form['credit_card']['exp_month']['#attached']['css'][] = drupal_get_path('module', 'commerce_vantiv') . '/css/style_vantiv.css';
+    // Hide the credit card fields.
+    $form['credit_card']['number']['#states'] = array(
+      'visible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+      ),
+    );
+    $form['credit_card']['owner']['#states'] = array(
+      'visible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+      ),
+    );
+    $form['credit_card']['type']['#states'] = array(
+      'visible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+      ),
+    );
+     $form['credit_card']['exp_month']['#states'] = array(
+      'visible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+       // '.commerce-month-year-divider' => array('checked' => TRUE),
+      ),
+    );
+     $form['credit_card']['exp_year']['#states'] = array(
+      'visible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+      ),
+    );
+    $form['credit_card']['code']['#states'] = array(
+      'visible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+      ),
+    );
+
+  }
   drupal_alter('commerce_vantiv_submit_form', $form, $form_state['values'] = $payment_method);
 
   return $form;

@@ -3,6 +3,7 @@
  * @file
  * Implements Litle payment services for use in Drupal Commerce.
  */
+define('COMMERCE_VANTIV_STATUS_CREDIT', 'CREDIT');
 define('COMMERCE_VANTIV_STATUS_CAPTURE', 'CAPTURE');
 define('COMMERCE_VANTIV_STATUS_CAPTURED', 'CAPTURED');
 define('COMMERCE_VANTIV_STATUS_REFUND', 'REFUND');
@@ -992,6 +993,13 @@ function commerce_vantiv_api_object($settings = array(), $instance_id = '') {
 function commerce_vantiv_commerce_payment_transaction_status_info() {
   $statuses = array();
 
+  $statuses[COMMERCE_VANTIV_STATUS_CREDIT] = array(
+    'status' => COMMERCE_VANTIV_STATUS_CREDIT,
+    'title' => t('Credit'),
+    'icon' => drupal_get_path('module', 'commerce_payment') . '/theme/icon-success.png',
+    'total' => TRUE,
+  );
+
   $statuses[COMMERCE_VANTIV_STATUS_CAPTURE] = array(
     'status' => COMMERCE_VANTIV_STATUS_CAPTURE,
     'title' => t('Capture'),
@@ -1076,3 +1084,139 @@ function commerce_vantiv_load_last_saved_order($user_id) {
   }
   return $return ? reset($return) : FALSE;
 }
+
+
+function commerce_vantiv_load_cof($user_id, $payment_method) {
+  variable_set('user_idssss', $user_id);
+  variable_set('payment_methodssssssss', $payment_method);
+  $cardonfile_capable = module_exists('commerce_cardonfile');
+  module_load_include('inc', 'commerce_payment', 'includes/commerce_payment.checkout_pane');
+  // Exit if payment method is not capable of Card on File, or Card on File
+  // functionality is disabled in the payment method instance.
+  if (!_commerce_cardonfile_capable_payment_method_check($payment_method) || (isset($payment_method['settings']['cardonfile']) && !$payment_method['settings']['cardonfile'])) {
+    return;
+  }
+
+  // For onsite payment methods add a checkbox to the credit card
+  // details container to store the credit card for future use.
+  if (!$payment_method['offsite']) {
+    $storage = variable_get('commerce_cardonfile_storage', 'opt-in');
+
+    if (in_array($storage, array('opt-in', 'opt-out'))) {
+      $form['commerce_payment']['payment_details']['credit_card']['cardonfile_store'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Store this credit card on file for future use.'),
+        '#default_value' => $storage == 'opt-out',
+      );
+    }
+    else {
+      $form['commerce_payment']['payment_details']['credit_card']['cardonfile_store'] = array(
+        '#type' => 'value',
+        '#value' => TRUE,
+      );
+    }
+
+  }
+
+  // Load existing active cards for the payment method instance and user.
+  $stored_cards = commerce_cardonfile_load_multiple_by_uid($user_id, $payment_method['instance_id']);
+
+  // Build options form
+  $cardonfile_options_form = array();
+  $instance_default_card_id = NULL;
+
+  // If have stored cards ...
+  if (!empty($stored_cards)) {
+    $valid_cards = array_filter($stored_cards, 'commerce_cardonfile_validate_card_expiration');
+    // If have un-expired cards ...
+    if (!empty($valid_cards)) {
+      // get options list with labels
+      $card_options = commerce_cardonfile_element_options_list($valid_cards);
+
+      // determine default option
+      $card_options_default_value = key($card_options);
+      foreach (array_keys($card_options) as $card_id) {
+        if (isset($valid_cards[$card_id]) && !empty($valid_cards[$card_id]->instance_default)) {
+          $card_options_default_value = $instance_default_card_id = $card_id;
+
+          // move instance default to the top of the list
+          $card_option_label = $card_options[$card_id];
+          unset($card_options[$card_id]);
+          $card_options = array($card_id => $card_option_label) + $card_options;
+          break;
+        }
+      }
+
+      $cardonfile_options_form = array(
+        '#type' => variable_get('commerce_cardonfile_selector', 'radios'),
+        '#title' => t('Select a stored card11111'),
+        '#options' => $card_options,
+        '#default_value' => 'new'/*$card_options_default_value*/,
+        '#weight' => -100,
+        '#ajax' => array(
+          'callback' => 'commerce_payment_pane_checkout_form_details_refresh',
+          'wrapper' => 'payment-details',
+        ),
+      );
+    }
+  }
+
+  // update form with options
+  if (!empty($cardonfile_options_form)) {
+    $form['commerce_payment']['payment_details']['cardonfile'] = $cardonfile_options_form;
+
+    // Add the CSS to hide a sole credit card icon if specified.
+    if (variable_get('commerce_cardonfile_hide_cc_radio_button', TRUE)) {
+      /*if (count($form['commerce_payment']['payment_method']['#options']) == 1) {
+        $form['commerce_payment']['payment_method']['#attached']['css'][] = drupal_get_path('module', 'commerce_cardonfile') . '/theme/commerce_cardonfile.checkout.css';
+      }*/
+    }
+
+    // If the current value for the card selection element is not to use
+    // a different credit card, then hide the credit card form elements.
+    if (empty($form_state['values']['commerce_payment']['payment_details']['cardonfile']) || $form_state['values']['commerce_payment']['payment_details']['cardonfile'] !== 'new') {
+      $form['commerce_payment']['payment_details']['credit_card']['#access'] = FALSE;
+    }
+  }
+  else {
+    $form['commerce_payment']['payment_details']['cardonfile'] = array(
+      '#type' => 'value',
+      '#value' => 'new',
+    );
+  }
+
+  // Add mark as default element
+  $instance_default_default_value = 0;
+  if (!empty($instance_default_card_id)) {
+    if (empty($form_state['values']) ||
+      (!empty($form_state['values']['commerce_payment']['payment_details']['cardonfile']) &&
+      $form_state['values']['commerce_payment']['payment_details']['cardonfile'] == $instance_default_card_id)) {
+      $instance_default_default_value = 1;
+    }
+  }
+
+  $force_instance_default = empty($stored_cards);
+  $form['commerce_payment']['payment_details']['cardonfile_instance_default'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Set as your default card'),
+    '#default_value' => $instance_default_default_value || $force_instance_default,
+    '#access' => !$instance_default_default_value,
+    '#disabled' => $force_instance_default,
+    '#weight' => 10,
+    '#states' => array(
+      'invisible' => array(
+        ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+      ),
+      'visible' => array(
+        ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+      ),
+    ),
+  );
+
+  // Allow others to alter this alter
+  drupal_alter('commerce_cardonfile_checkout_pane_form', $form['commerce_payment']['payment_details'], $form);
+
+  return $form['commerce_payment']['payment_details'];
+  //return $form;
+}
+
