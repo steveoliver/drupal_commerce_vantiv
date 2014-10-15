@@ -733,7 +733,7 @@ function commerce_vantiv_refund_access($order, $transaction) {
 function commerce_vantiv_void_access($order, $transaction) {
   // Return FALSE if the transaction isn't for Vantiv or isn't
   // awaiting refund.
-  if (($transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS && $transaction->status !== COMMERCE_VANTIV_STATUS_REFUND)) {
+  if (($transaction->payment_method !== 'vantiv_echeck' and $transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS && $transaction->status !== COMMERCE_VANTIV_STATUS_REFUND)) {
     return FALSE;
   }
   // Allow access if the user can update this transaction.

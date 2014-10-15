@@ -355,10 +355,10 @@ function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane
  * Performs http request.
  */
 function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
-  $api = commerce_vantiv_api_object();
   $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
   // Direct transaction without using card on file.
   if ($payment_method['method_id'] == 'vantiv_direct') {
+    $api = commerce_vantiv_api_object();
     // Check if card should be credit.
     if (!empty($pane_values['credit_card']['credit']) and $pane_values['credit_card']['credit'] == TRUE) {
       if (!empty($form_parents['amount'])) {
@@ -396,6 +396,7 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
     }
   }
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
+    $api = commerce_vantiv_api_object(array(), $instance_id = 'vantiv_echeck|commerce_payment_vantiv_echeck')
     // Check if card should be credit.
     if (!empty($pane_values['credit']) and $pane_values['credit'] == TRUE) {
       if (!empty($form_parents['amount'])) {

@@ -195,14 +195,10 @@ class VantivApi {
 
      if (!empty($card_info['credit']) and $card_info['credit'] == TRUE) {
        $response = $initilaize->echeckCreditRequest($billing_data);
-       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
      }
-
       if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
         $billing_data['accountNumber'] = $card_info['accNum'];
         $response = $initilaize->registerTokenRequest($billing_data);
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-
       }
       elseif (empty($card_info['credit'])) {
         $response = $initilaize->echeckSaleRequest($billing_data);
@@ -269,8 +265,12 @@ class VantivApi {
         $response = $init->creditRequest($billing_data);
         break;
       case 'void':
+        if ($transaction->payment_method == 'vantiv_direct') {
         $response = $init->voidRequest($billing_data);
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+        }
+        elseif ($transaction->payment_method == 'vantiv_echeck') {
+          $response = $init->echeckVoidRequest($billing_data);
+        }
         break;
       case 'reversal':
         $response = $init->authReversalRequest($billing_data);
@@ -370,8 +370,6 @@ class VantivApi {
       $id = litle\sdk\XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
       $payload_attribute = 'echeckSalesResponse';
     }
-    //Get the payload.
-    $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     //If the transaction was approved.
     if ($response_code == '000' || $response_code == '801') {
       if (!empty($order_id)) {
@@ -403,10 +401,12 @@ class VantivApi {
           $transaction->data = array('id' => $id);
         }
         elseif (!empty($saleResponse)) {
+          $transaction->data = array('id' => $id);
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
         elseif (!empty($echeckSalesResponse)) {
+          $transaction->data = array('id' => $id);
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
@@ -465,7 +465,6 @@ class VantivApi {
           $card_info['new_card_id'] = $card->card_id;
           $card_info['cardonfile'] = '';
           $card_info['credit_card']['cardonfile_store'] = '';
-
           return $this->directPayments($customer_profile, $order, $card_info, $payment_method, '', $litleToken, '', TRUE, 1);
 
         }
@@ -647,10 +646,16 @@ class VantivApi {
     $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
 
     $voidResponse = litle\sdk\XmlParser::getNode($response,'voidResponse');
+    $echeckVoidResponse = litle\sdk\XmlParser::getNode($response,'echeckVoidResponse');
 
     if (!empty($voidResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'voidResponse', 'id');
       $payload_attribute = 'voidResponse';
+    }
+
+    if (!empty($echeckVoidResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'echeckVoidResponse', 'id');
+      $payload_attribute = 'echeckVoidResponse';
     }
 
     // If the transaction was approved.
@@ -691,7 +696,7 @@ class VantivApi {
       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
       $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
       $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
-      if (!empty($voidResponse)) {
+      if (!empty($voidResponse) || !empty($echeckVoidResponse)) {
         $transaction->status = COMMERCE_VANTIV_STATUS_VOID;
         $transaction->message .= t('<br/> Void:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         $transaction->data = array('id' => $id);
