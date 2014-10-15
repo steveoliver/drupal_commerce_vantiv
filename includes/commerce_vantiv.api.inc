@@ -31,10 +31,10 @@ class VantivApi {
   /**
    * Process direct payments.
    */
-  public function directPayments($customer_profile, $order, $card_info = '', $payment_method, $amount = '', $token = '', $fraud_id, $echeck, $end_echeck = '') {
-    //$load_library = $this->libraryLoad();
+  public function directPayments($customer_profile, $order, $card_info = '', $payment_method, $amount = '', $token = '', $fraud_id = '', $echeck = '', $end_echeck = '') {
     $currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
+
     $card_owner_name = $customer_profile->commerce_customer_address['und'][0]['name_line'];
     $user = user_load($order->uid);
     if (empty($token)) {
@@ -109,7 +109,7 @@ class VantivApi {
   		  'orderSource'=>'ecommerce',
   		  'billToAddress' => array(
   		  'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
-  	   	  'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
+  	   	'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
   		  'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
   		  'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
   		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
@@ -125,26 +125,26 @@ class VantivApi {
       }
     }
 
-
-
-
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
     if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
       $response = $initilaize->creditRequest($billing_data);
+      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     }
-
     // Check if this is credit card transaction.
     if ($echeck != TRUE) {
       if ($this->transaction_type_process == 'pre_auth' /*and empty($card_info['credit_card']['cardonfile_store'])*/ and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
         $response = $initilaize->authorizationRequest($billing_data);
+
       }
       elseif ($this->transaction_type_process == 'sale' /*and empty($card_info['credit_card']['cardonfile_store'])*/and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store'])) and empty($card_info['credit_card']['credit'])) {
         $response = $initilaize->saleRequest($billing_data);
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
       }
       elseif (!empty($card_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE) {
         $billing_data['accountNumber'] = $card_info['credit_card']['number'];
         $response = $initilaize->registerTokenRequest($billing_data);
+
       }
       //$response_code = litle\sdk\XmlParser::getNode($response, 'response');
       if (!empty($response)) {
@@ -184,12 +184,27 @@ class VantivApi {
           'checkNum' => $card_info['checkNum'],
         );
       }
+      elseif (!empty($token) and !empty($card_info['credit']) and $card_info['credit'] == TRUE) {
+        $billing_data['echeckToken'] = array(
+          'litleToken' => $token,
+          'accType' => $card_info['accType'],
+          'routingNum' => $card_info['routingNum'],
+          'checkNum' => $card_info['checkNum'],
+        );
+      }
+
+     if (!empty($card_info['credit']) and $card_info['credit'] == TRUE) {
+       $response = $initilaize->echeckCreditRequest($billing_data);
+       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+     }
+
       if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
         $billing_data['accountNumber'] = $card_info['accNum'];
         $response = $initilaize->registerTokenRequest($billing_data);
         $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+
       }
-      else {
+      elseif (empty($card_info['credit'])) {
         $response = $initilaize->echeckSaleRequest($billing_data);
       }
       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
@@ -255,6 +270,7 @@ class VantivApi {
         break;
       case 'void':
         $response = $init->voidRequest($billing_data);
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         break;
       case 'reversal':
         $response = $init->authReversalRequest($billing_data);
@@ -313,6 +329,7 @@ class VantivApi {
     $saleResponse = litle\sdk\XmlParser::getNode($response,'saleResponse');
     $registerTokenResponse = litle\sdk\XmlParser::getNode($response,'registerTokenResponse');
     $echeckSalesResponse = litle\sdk\XmlParser::getNode($response,'echeckSalesResponse');
+    $echeckCreditResponse = litle\sdk\XmlParser::getNode($response,'echeckCreditResponse');
 
     // Get new data from account updater if changes were made.
     $accountUpdater = litle\sdk\XmlParser::getNode($response, 'accountUpdater');
@@ -320,6 +337,12 @@ class VantivApi {
     $type = litle\sdk\XmlParser::getNode($response, 'type');
     $number = litle\sdk\XmlParser::getNode($response, 'number');
     $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
+
+    if (!empty($echeckCreditResponse)) {
+      $id = litle\sdk\XmlParser::getAttribute($response, 'echeckCreditResponse', 'id');
+      $payload_attribute = 'echeckCreditResponse';
+      $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+    }
 
     if (!empty($creditResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'creditResponse', 'id');
@@ -357,7 +380,6 @@ class VantivApi {
       elseif (!empty($transaction)) {
         $order = commerce_order_load($transaction->order_id);
       }
-
       // If the transaction is not registerTokenResponse.
       if (empty($registerTokenResponse)) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
@@ -370,6 +392,7 @@ class VantivApi {
         $transaction->data = array('auth_code' => $auth_code);
 
         //Get the payload.
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
         $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
 
@@ -387,7 +410,7 @@ class VantivApi {
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           $transaction->message .= t('Sale:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
-        elseif (!empty($creditResponse)) {
+        elseif (!empty($creditResponse) || !empty($echeckCreditResponse)) {
           $transaction->status = COMMERCE_VANTIV_STATUS_CREDIT;
           $transaction->message .= t('Credit:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         }
@@ -442,6 +465,7 @@ class VantivApi {
           $card_info['new_card_id'] = $card->card_id;
           $card_info['cardonfile'] = '';
           $card_info['credit_card']['cardonfile_store'] = '';
+
           return $this->directPayments($customer_profile, $order, $card_info, $payment_method, '', $litleToken, '', TRUE, 1);
 
         }
@@ -786,7 +810,6 @@ class VantivApi {
           $new_array[$key] = $value;
         }
       }
-      dsm($new_array, '$new_array');
       foreach ($new_array['attributes'] as $k => $v) {
         if (!empty($k) and !empty($v)) {
           $atributes[$k] = $v;
