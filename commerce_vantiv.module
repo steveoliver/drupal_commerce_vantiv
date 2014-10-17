@@ -1158,3 +1158,172 @@ function commerce_vantiv_load_cof($user_id, $payment_method) {
   return $form['commerce_payment']['payment_details'];
 }
 
+/**
+ * Mimic batch trigger so it can be triggered when cron runs.
+ */
+function commerce_vantiv_batch_rule($date) {
+  $_SESSION['http_request_count'] = 0;
+  $form_state = array();
+  $form_state['values']['hidden_value'] = 1;
+  $form_state['values']['op'] = 'Capture';
+  $form_state['values']['submit'] = 'Capture';
+  $form_state['values']['date'] = $date;
+  drupal_form_submit('commerce_vantiv_batch_form', $form_state);
+}
+
+/**
+ * Form for the batch process.
+ */
+function commerce_vantiv_batch_form($form, &$form_state) {
+  $form['capture_fieldset'] = array(
+    '#type' => 'fieldset',
+    '#description' => t('Capture all pending transactions'),
+    '#title' => t('Capture'),
+  );
+
+  $form['date'] = array(
+    '#type' => 'textfield',
+    '#description' => t('Enter date (like: 16 June 2013), time stamp or days in the past (by giving negative values) like -1 day, -2 days, -3 days … (this will capture all pending transactions from the previous day, 2 days before today or 3 days before today)
+                       or just use “now” to capture all pending transactions from this moment. May use the following format as well: YYYY-MM-DD HH:MM:SS'),
+    '#title' => t('Chose a date from which to start capturing transactions.'),
+    '#default_value' => 'now',
+    '#required' => TRUE,
+  );
+
+  $form['hidden_value'] = array(
+    '#type' => 'hidden',
+    '#value' => 1,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#description' => t('Capture all pending transactions'),
+    '#value' => 'Capture',
+  );
+
+  return $form;
+}
+
+/**
+ * If the form is submited start the batch process.
+ */
+function commerce_vantiv_batch_form_submit($form, &$form_state) {
+  $date = $form_state['values']['date'];
+  if (is_numeric($form_state['values']['date']) != TRUE) {
+    $date = strtotime($date);
+  }
+
+  if ($form_state['values']['hidden_value'] == 1) {
+    $_SESSION['http_request_count'] = 0;
+    $batch = commerce_vantiv_batch_process($date);
+    batch_set($batch);
+  }
+}
+
+/**
+ * Batch process.
+ */
+function commerce_vantiv_batch_process($date = '') {
+  if (!empty($date)) {
+    $all_transactions = commerce_vantiv_load_all_pending_transactions($date);
+  }
+  else {
+    $all_transactions = commerce_vantiv_load_all_pending_transactions();
+  }
+  $operations = array();
+  foreach ($all_transactions as $key => $value) {
+    $transaction_id = $value->transaction_id;
+
+    $operations[] = array(
+      'commerce_vantiv_batch_operation',
+      array(
+        $transaction_id,
+        t('(Operation @operation)', array('@operation' => $key)),
+      ),
+    );
+  }
+
+  $batch = array(
+    'operations' => $operations,
+    'finished' => 'commerce_vantiv_batchs_finished',
+  );
+
+  return $batch;
+}
+
+/**
+ * Batch operation process.
+ */
+function commerce_vantiv_batch_operation($transaction_id, $operation_details, &$context) {
+  $transaction = commerce_vantiv_load_all_pending_transactions('', $transaction_id);
+  if (is_array($transaction)) {
+    $transaction = reset($transaction);
+  }
+  $order = commerce_order_load($transaction->order_id);
+
+  $context['message'] = t('Process transactions "@title"', array('@title' => $transaction->payment_method)) . ' ' . $operation_details;
+  $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  $api = commerce_vantiv_api_object();
+  if (!empty($order)) {
+    $result = $api->crossPayment($transaction, '', '', 'capture', TRUE);
+  }
+  $context['results'][] = !empty($result) ? $result : '';
+  $_SESSION['http_request_count']++;
+}
+
+/**
+ * Batch 'finished' callback.
+ */
+function commerce_vantiv_batchs_finished($success, $results, $operations) {
+
+  if ($success and !empty($results)) {
+    variable_set('batch_return', $results);
+    foreach ($results as $single_result) {
+      if ($single_result['result'] == TRUE and !empty($single_result['transaction_id']) and is_numeric($single_result['transaction_id']) == TRUE) {
+        drupal_set_message(t('The captured operation was successful for transaction #@transaction_id.', array('@transaction_id' => $single_result['transaction_id'])), 'status');
+      }
+      else {
+        drupal_set_message(t('The captured operation was not successful for transaction #@transaction_id.', array('@transaction_id' => $single_result['transaction_id'])), 'error');
+      }
+    }
+  }
+  else {
+    // An error occurred.
+    $error_operation = reset($operations);
+    drupal_set_message(
+      t('An error occurred while processing @operation with arguments : @args',
+        array(
+          '@operation' => $error_operation[0],
+          '@args' => print_r($error_operation[0], TRUE),
+        )
+      )
+    );
+  }
+}
+
+/**
+ * Loads transactions by date, transaction_id or order_id.
+ */
+function commerce_vantiv_load_all_pending_transactions($date = '', $transaction_id = '', $order_id = '') {
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'commerce_payment_transaction')
+  ->propertyCondition('status', 'pending');
+  if (!empty($transaction_id)) {
+    $query->propertyCondition('transaction_id', $transaction_id);
+  }
+  elseif (!empty($order_id)) {
+    $query->propertyCondition('order_id', $order_id);
+  }
+  elseif (!empty($date)) {
+    $query->propertyCondition('created', $date, '<=');
+  }
+  $query->propertyOrderBy('transaction_id', 'DESC');
+  $return = array();
+  $result = $query->execute();
+  if (!empty($result['commerce_payment_transaction'])) {
+    foreach ($result['commerce_payment_transaction'] as $transaction_id) {
+      $return[] = entity_load_single('commerce_payment_transaction', $transaction_id->transaction_id);
+    }
+  }
+  return $return;
+}

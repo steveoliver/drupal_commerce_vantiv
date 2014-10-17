@@ -24,7 +24,9 @@ class VantivApi {
    * Loads the library functions needed to process transactions.
    */
   public function libraryLoad() {
-    define('STDIN',fopen("php://stdin","r"));
+    if (defined('STDIN') != TRUE) {
+      define('STDIN',fopen("php://stdin","r"));
+    }
     $library = libraries_info('litle');
     $load_library = libraries_load('litle');
     libraries_load_files($load_library);
@@ -125,9 +127,6 @@ class VantivApi {
         );
       }
     }
-    $billing_data['orderSource'] = '3dsAttempted';
-    $billing_data['authenticationValue'] = 'BwABBJQ1AgAAAAAgJDUCAAAAAAA=';
-
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
     if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
@@ -138,11 +137,9 @@ class VantivApi {
     if ($echeck != TRUE) {
       if ($this->transaction_type_process == 'pre_auth' /*and empty($card_info['credit_card']['cardonfile_store'])*/ and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
         $response = $initilaize->authorizationRequest($billing_data);
-
       }
       elseif ($this->transaction_type_process == 'sale' /*and empty($card_info['credit_card']['cardonfile_store'])*/and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store'])) and empty($card_info['credit_card']['credit'])) {
         $response = $initilaize->saleRequest($billing_data);
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
       }
       elseif (!empty($card_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE) {
         $billing_data['accountNumber'] = $card_info['credit_card']['number'];
@@ -198,18 +195,16 @@ class VantivApi {
 
      if (!empty($card_info['credit']) and $card_info['credit'] == TRUE) {
        $response = $initilaize->echeckCreditRequest($billing_data);
-       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
      }
 
       if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
         $billing_data['accountNumber'] = $card_info['accNum'];
         $response = $initilaize->registerTokenRequest($billing_data);
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+
       }
       elseif (empty($card_info['credit'])) {
         $response = $initilaize->echeckSaleRequest($billing_data);
       }
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
       if (!empty($response)) {
         return $this->processDirectTransactions($response, $payment_method, '', $card_info);
       }
@@ -222,7 +217,9 @@ class VantivApi {
   /**
    * Process cross payments.
    */
-  public function crossPayment($transaction, $partial = '', $amount = '', $type = '') {
+  public function crossPayment($transaction, $partial = '', $amount = '', $type = '', $batch = '') {
+    //self::libraryLoad();
+
     $billing_data = array(
           'user' => $this->user,
           'password' => $this->password,
@@ -271,7 +268,6 @@ class VantivApi {
       case 'void':
         if ($transaction->payment_method == 'vantiv_direct') {
         $response = $init->voidRequest($billing_data);
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         }
         elseif ($transaction->payment_method == 'vantiv_echeck') {
           $response = $init->echeckVoidRequest($billing_data);
@@ -286,12 +282,15 @@ class VantivApi {
     $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
 
     // Saves partial or fully captured transaction.
-    if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'capture') {
+    if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'capture' /*and ($batch != TRUE or empty($batch))*/) {
       $this->processCapturedTransactions($response, $payment_method, $transaction, $partial_amount);
     }
-    elseif ($type == 'capture') {
-      $this->processCapturedTransactions($response, $payment_method, $transaction);
-    }
+    elseif ($type == 'capture' /*and ($batch != TRUE or empty($batch))*/) {
+      return $this->processCapturedTransactions($response, $payment_method, $transaction, '', $batch);
+    }/*
+    elseif ($type == 'capture' and $batch == TRUE) {
+      return $response;
+    }*/
 
     // Saves partial or fully refund transaction.
     if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'refund') {
@@ -312,7 +311,6 @@ class VantivApi {
     }
     elseif ($type == 'reversal') {
       $this->processReversedTransactions($response, $payment_method, $transaction);
-
     }
   }
 
@@ -385,7 +383,7 @@ class VantivApi {
     //Get the payload.
     $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     //If the transaction was approved.
-    if ($response_code == '000' || $response_code == '801' and (!empty($avs_result) and $avs_result == '00') and !empty($device_reputation_score) and $device_reputation_score >= 0) {
+    if ($response_code == '000' || $response_code == '801' and (empty($device_reputation_score) or $device_reputation_score >= 0)) {
       if (!empty($order_id)) {
         $order = commerce_order_load($order_id);
       }
@@ -529,7 +527,7 @@ class VantivApi {
   /**
    * Process captured transactions.
    */
-  public function processCapturedTransactions($response, $payment_method, $transaction, $partial_amount = '') {
+  public function processCapturedTransactions($response, $payment_method, $transaction, $partial_amount = '', $batch = '') {
     // Get response information.
     $response_code = litle\sdk\XmlParser::getNode($response,'response');
     $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
@@ -590,7 +588,9 @@ class VantivApi {
         $transaction->status = COMMERCE_VANTIV_STATUS_CAPTURE;
         $transaction->message .= t('<br/> Captureed:') . t('@date', array('@date' => format_date(REQUEST_TIME, 'short')));
         $transaction->data = array('id' => $id);
-        drupal_set_message(t('Transaction was captured successfully.'), 'status');
+        if (empty($batch)) {
+          drupal_set_message(t('Transaction was captured successfully.'), 'status');
+        }
       }
       else {
         if (!empty($message) and !empty($order)) {
@@ -601,7 +601,18 @@ class VantivApi {
         drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
       }
       commerce_payment_transaction_save($transaction);
-      drupal_goto('admin/commerce/orders');
+      if ($batch != TRUE or empty($batch)) {
+        drupal_goto('admin/commerce/orders');
+      }
+      else {
+        $transaction = commerce_vantiv_load_last_saved_transaction($order->uid);
+        $transaction = reset($transaction);
+        $result = array(
+          'result' => TRUE,
+          'transaction_id' => $transaction->transaction_id,
+        );
+        return $result;
+      }
     }
   }
 
@@ -983,3 +994,5 @@ class VantivApi {
     return  $type;
   }
 }
+
+
