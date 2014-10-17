@@ -22,15 +22,6 @@ function commerce_vantiv_views_api() {
 }
 
 /**
- * Implements hook_menu_alter().
- */
-function commerce_vantiv_menu_alter(&$items) {
-  $items['user/%user/cards/add']['title'] = t('Add card/echeck');
-  $items['user/%user/cards/add/' . drupal_hash_base64('vantiv_echeck|commerce_payment_vantiv_echeck')]['title'] = t('Add an echeck for payments with Vantiv echeck payment');
-  return $items;
-}
-
-/**
  * Implements hook_libraries_info().
  */
 function commerce_vantiv_libraries_info() {
@@ -111,9 +102,19 @@ function commerce_vantiv_commerce_payment_method_info() {
 }
 
 /**
+ * Implements hook_menu_alter().
+ */
+function commerce_vantiv_menu_alter(&$items) {
+  $items['user/%user/cards/add']['title'] = t('Add card/echeck');
+  $items['user/%user/cards/add/' . drupal_hash_base64('vantiv_echeck|commerce_payment_vantiv_echeck')]['title'] = t('Add an echeck for payments with Vantiv echeck payment');
+  return $items;
+}
+
+/**
  * Implements hook_form_alter().
  */
 function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
+
   if (!empty($form_state['build_info']['args'])) {
     foreach ($form_state['build_info']['args'] as $key => $value) {
       if (is_object($value) and get_class($value) == 'CommerceCardOnFile') {
@@ -123,7 +124,7 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
   }
   if (!empty($card) and is_object($card) and $form_id == 'commerce_cardonfile_card_form' and get_class($card) == 'CommerceCardOnFile') {
   if ($card->instance_id == 'vantiv_direct|commerce_payment_vantiv_direct') {
-    /*
+
     dsm($form, 'initial direct form');
     $payment_method = commerce_payment_method_instance_load('vantiv_echeck|commerce_payment_vantiv_echeck');
     dsm($form_state, 'form_state');
@@ -189,7 +190,7 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
       $form['credit_card']['cardonfile_instance_default']['#weight'] = '99';
       $form['submit']['#weight'] = 100;
 
-      return $form;*/
+      return $form;
     }
     elseif (!empty($card->instance_id) and $card->instance_id == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
       $payment_method = commerce_payment_method_instance_load('vantiv_echeck|commerce_payment_vantiv_echeck');
@@ -203,6 +204,8 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
       $form['credit_card']['exp_month']['#access'] = FALSE;
       $form['credit_card']['code']['#default_value'] = '123';
       $form['credit_card']['code']['#access'] = FALSE;
+
+
       drupal_set_title(t('Add an eCheck'));
       $form['credit_card']['type'] = array(
         '#type' => 'select',
@@ -286,11 +289,11 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
         '#weight' => '95',
       );
 
-      if (strstr(current_path(), 'edit') == TRUE ) {
+      if (strstr(current_path(), 'edit') != FALSE ) {
         $form['submit']['#value'] = t('Update echeck');
         $form['credit_card']['cardonfile_instance_default']['#title'] = t('Use as default echeck for payments with %method', array('%method' => $payment_method['display_title']));
       }
-      elseif (strstr(current_path(), 'add') == TRUE ) {
+      elseif (strstr(current_path(), 'add') != FALSE ) {
         $form['credit_card']['cardonfile_instance_default']['#title'] = t('Use as default echeck for payments with %method', array('%method' => $payment_method['display_title']));
         $form['submit']['#value'] = t('Add echeck');
       }
@@ -302,6 +305,7 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
       $form['#validate'][] = 'commerce_vantiv_form_elements_vaidate';
     }
   }
+
   return $form;
 }
 
@@ -309,24 +313,6 @@ function commerce_vantiv_form_elements_vaidate($form, &$form_state) {
   if (empty($form)) {
     form_set_error('number', t('error.'));
   }
- /* $form_state['card']->card_type = $form_state['values']['accType'];
-  $form_state['card']->card_number = $form_state['values']['accNum'];
-  $form_state['card']->card_exp_month  = '12';
-  $form_state['card']->card_exp_year = '2100';
-  $form_state['values']['credit_card']['type'] = $form_state['values']['accType'];
-  $form_state['values']['credit_card']['number'] = $form_state['values']['accNum'];
-  $form_state['values']['credit_card']['exp_month'] = '12';
-  $form_state['values']['credit_card']['exp_year'] = '2100';
-  $form_state['values']['credit_card']['owner'] = 'Test owner';
-
-  $card = new stdClass();
-  foreach ($form_state['card'] as $key => $value) {
-
-
-    $card->$key = $value;
-  }
-  dsm($card, 'card');
-  return TRUE;*/
   return TRUE;
 }
 
@@ -350,16 +336,6 @@ function commerce_vantiv_cardonfile_charge($payment_method, $card_data, $order, 
   else {
     $amount = '';
   }
-
-  /*if (is_object($card_data) == TRUE) {
-    foreach($card_data as $k => $v) {
-      $card_array[$k] = $v;
-    }
-    variable_set('card_data', $card_array);
-  }
-  else {
-    variable_set('card_data', $card_data);
-  }*/
 
   $result = $api->directPayments($customer_profile, $order, $card_data, $payment_method, $amount, $card_data->remote_id);
   return TRUE;
@@ -390,10 +366,10 @@ function commerce_vantiv_cardonfile_update() {
   $order->commerce_order_total['und'][0]['data']['components'][0]['price']['amount'] = 0.1;
   commerce_order_save($order);
   $last_order = commerce_vantiv_load_last_saved_order($user->uid);
+
   $token = $card->remote_id;
   // Create initial transaction.
   $api = commerce_vantiv_api_object();
-  //$api->libraryLoad();
   $data = array(
     'user' => $api->user,
     'password' => $api->password,
@@ -429,14 +405,6 @@ function commerce_vantiv_cardonfile_update() {
   );
 
   if ($params['validate'] == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
-    /*$data['echeck'] = array(
-      'accType' => $params['credit_card']['type'],
-      'accNum' => $params['credit_card']['number'],
-      'routingNum' => $params['credit_card']['routingNum'],
-      'checkNum' => $params['credit_card']['checkNum'],
-    );*/
-    //$params['exp_month'] = '12';
-    //$params['exp_year'] = '2100';
     $data['shipToAddress'] = array(
         'name' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['name_line'] : 'Save card name',
         'city' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['locality'] : 'Save card city',
@@ -470,7 +438,7 @@ function commerce_vantiv_cardonfile_update() {
   	$response = $initilaize->saleRequest($data);
   }
   $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-
+  variable_set('update_card', $payload);
   // $result = $api->directPayments($customer_profile, $order, $card_data, $payment_method, $amount, $card_data->remote_id);
 
   // Get response information.
@@ -496,7 +464,6 @@ function commerce_vantiv_cardonfile_update() {
     $card_type = $api->cardTypes('', $type);
     $exp_month = substr($expDate, 1, 2);
     $exp_year = substr($expDate, -2, 2);
-
     $card->card_name = $params['credit_card']['owner'];
     $card->card_number = substr($number, -4, 4);
     $card->type = !empty($card_type) ? $card_type : '';
@@ -550,8 +517,6 @@ function commerce_vantiv_cardonfile_create() {
   }
 
   $api = commerce_vantiv_api_object();
-  //$api->libraryLoad();
-
   $data = array(
     'user' => $api->user,
     'password' => $api->password,
@@ -568,7 +533,7 @@ function commerce_vantiv_cardonfile_create() {
     'tcp_ssl' => '',
     'tcp_timeout' => '',
     'print_xml' => '',
-    'orderId' => $user->uid . '-' . time(),
+    'amount' => 10,
   );
 
   if ($params['validate'] == 'vantiv_direct|commerce_payment_vantiv_direct') {
@@ -589,9 +554,8 @@ function commerce_vantiv_cardonfile_create() {
     );
     $params['exp_month'] = '12';
     $params['exp_year'] = '2100';
-    $data['accountNumber'] = $params['credit_card']['number'];
   }
-  //$params['owner'] = 'Test';
+  variable_set('datasss', $data);
   $initilaize = new litle\sdk\LitleOnlineRequest();
   $response = $initilaize->registerTokenRequest($data);
   $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
@@ -733,7 +697,7 @@ function commerce_vantiv_refund_access($order, $transaction) {
 function commerce_vantiv_void_access($order, $transaction) {
   // Return FALSE if the transaction isn't for Vantiv or isn't
   // awaiting refund.
-  if (($transaction->payment_method !== 'vantiv_echeck' and $transaction->payment_method !== 'vantiv_direct') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS && $transaction->status !== COMMERCE_VANTIV_STATUS_REFUND)) {
+  if (($transaction->payment_method !== 'vantiv_direct' and $transaction->payment_method !== 'vantiv_echeck') || empty($transaction->remote_id) || ($transaction->status !== COMMERCE_VANTIV_STATUS_CAPTURE && $transaction->status !== COMMERCE_PAYMENT_STATUS_SUCCESS && $transaction->status !== COMMERCE_VANTIV_STATUS_REFUND)) {
     return FALSE;
   }
   // Allow access if the user can update this transaction.
@@ -757,32 +721,6 @@ function commerce_vantiv_reversal_access($order, $transaction) {
  * Settings form in the admin UI for the payment method.
  */
 function commerce_vantiv_settings_form($settings = NULL) {
-  $settings = (array) $settings + array(
-    'account' => 'test',
-    'pspid' => '',
-    'currency' => variable_get('commerce_default_currency', 'USD'),
-    'language' => '',
-    'sha_in' => '',
-    'sha_out' => '',
-    'language_list' => array(),
-  );
-/*
-  $form['account'] = array(
-    '#type' => 'radios',
-    '#title' => t('Processing url'),
-    '#description' => t('Please choose Litle url from the following list:'),
-    '#options' => array(
-      'https://www.testlitle.com/sandbox/communicator/online' => 'Sandbox: https://www.testlitle.com/sandbox/communicator/online',
-      'https://postlive.litle.com/vap/communicator/online' => 'Postlive: https://postlive.litle.com/vap/communicator/online',
-      'https://transact-postlive.litle.com/vap/communicator/online' => 'Transact Postlive: https://transact-postlive.litle.com/vap/communicator/online',
-      'https://payments.litle.com/vap/communicator/online' => 'Production: https://payments.litle.com/vap/communicator/online',
-      'https://transact.litle.com/vap/communicator/online' => 'Production Transact: https://transact.litle.com/vap/communicator/online',
-      'https://prelive.litle.com/vap/communicator/online' => 'Prelive: https://prelive.litle.com/vap/communicator/online',
-      'https://transact-prelive.litle.com/vap/communicator/online' => 'Transact Prelive: https://transact-prelive.litle.com/vap/communicator/online'
-    ),
-    '#default_value' => isset($settings['url']) ? $settings['url'] : "https://www.testlitle.com/sandbox/communicator/online" ,
-    '#required' => TRUE,
-  );*/
 
   $form['account'] = array(
     '#type' => 'radios',
@@ -835,14 +773,43 @@ function commerce_vantiv_settings_form($settings = NULL) {
     ),
   );
 
-  $form['transaction_type_process'] = array(
+  if (strstr(current_path(), 'vantiv_direct') != FALSE) {
+    $form['transaction_type_process'] = array(
+      '#type' => 'radios',
+      '#title' => t('Transaction type'),
+      '#default_value' => empty($settings['transaction_type_process']) ? 'sale' : $settings['transaction_type_process'],
+      '#options' => array(
+        'sale' => t('Sale'),
+        'pre_auth' => t('Pre-auth'),
+      ),
+    );
+  }
+
+  $form['advance_fraud'] = array(
     '#type' => 'radios',
-    '#title' => t('Transaction type'),
-    '#default_value' => empty($settings['transaction_type_process']) ? 'sale' : $settings['transaction_type_process'],
+    '#title' => t('Advance fraud tools'),
     '#options' => array(
-      'sale' => t('Sale'),
-      'pre_auth' => t('Pre-auth'),
+      '1' => t('Apply advanced fraud tools'),
+      '0' => t('Do not use advanced fraud tools'),
     ),
+    '#default_value' => empty($settings['advance_fraud']) ? '0' : $settings['advance_fraud'],
+  );
+
+  $form['advance_fraud_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('5-character prefix'),
+    '#description' => t('Enter the 5-character prefix, provided by vantiv.'),
+    '#maxlength' => 5,
+    '#size' => 5,
+    '#states' => array(
+      'visible' => array(
+        ':input[name$="[advance_fraud]"]' => array('value' => '1'),
+      ),
+      'invisible' => array(
+        ':input[name$="[cardonfile_store_card]"]' => array('value' => '0'),
+      ),
+    ),
+    '#default_value' => empty($settings['advance_fraud_key']) ? '' : $settings['advance_fraud_key'],
   );
 
   // Card on File module support.
@@ -885,8 +852,6 @@ function commerce_vantiv_settings_form($settings = NULL) {
     '#element_validate' => array('commerce_vantiv_connect_validate_element'),
   );
 
-  //$form['#submit'][] = 'commerce_vantiv_settings_form_submit';
-
   return $form;
 }
 
@@ -901,30 +866,6 @@ function commerce_vantiv_connect_validate_element($element, $form, &$form_state)
   $echeck_payment->weight = 10;
   $echeck_payment->save();
   rules_clear_cache();
-}
-
-function commerce_vantiv_views_pre_render(&$view) {
-  /*if($view->name == "commerce_card_on_file_user_cards") {
-    drupal_set_message('test', 'status');
-    dsm($view, 'view');
-    foreach ($view->field as $key => $value) {
-      if ($key == 'label') {
-      //  $value->view->field['label'] = 'views_handler_field';
-        //$view->field['label'] = 'views_handler_field';
-              dsm($value, 'value');
-              foreach ($value->view->field['label'] as $k => $v) {
-
-              }
-
-      }
-    }
-  }*/
-}
-
-function test() {
-
-
-
 }
 
 /**
@@ -1087,8 +1028,6 @@ function commerce_vantiv_load_last_saved_order($user_id) {
 
 
 function commerce_vantiv_load_cof($user_id, $payment_method) {
-  variable_set('user_idssss', $user_id);
-  variable_set('payment_methodssssssss', $payment_method);
   $cardonfile_capable = module_exists('commerce_cardonfile');
   module_load_include('inc', 'commerce_payment', 'includes/commerce_payment.checkout_pane');
   // Exit if payment method is not capable of Card on File, or Card on File
@@ -1217,6 +1156,5 @@ function commerce_vantiv_load_cof($user_id, $payment_method) {
   drupal_alter('commerce_cardonfile_checkout_pane_form', $form['commerce_payment']['payment_details'], $form);
 
   return $form['commerce_payment']['payment_details'];
-  //return $form;
 }
 

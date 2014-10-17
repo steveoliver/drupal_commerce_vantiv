@@ -86,7 +86,38 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
           ),
         );
       }
-
+   $api = commerce_vantiv_api_object();
+   $fraud_key = !empty($api->advance_fraud_key) ? $api->advance_fraud_key : '';
+   $reminder = $order->uid . '-' . time();
+   $session_id =  $fraud_key . '-' . $reminder;
+   if (!empty($fraud_key)) {
+     $form['hidden_fraud_kit'] = array(
+       '#type' => 'hidden',
+       '#title' => t('Hidden element.'),
+       '#prefix' => '<!-Begin ThreatMetrix profiling tags below -->
+          <!- note: replace UNIQUE_SESSION_ID with a uniquely generated handle
+          note: for production, replace h.online-metrix.net with a local URL and
+          configure your web server to redirect to h.online-metrix.net -->
+          <div style="background:url(https://h.online-metrix.net/fp/clear.png?org_id=
+          q5ua9sl2&amp;session_id=' . $session_id . '&amp;m=1)"> </div>
+          <img src="https://h.online-metrix.net/fp/clear.png?org_id=q5ua9sl2&amp;
+          session_id=' . $session_id . '&amp;m=2" />
+          <script src="https://h.online-metrix.net/fp/check.js?org_id=q5ua9sl2&amp;
+          session_id=' . $session_id . '&amp;pageid=##PAGEID##">
+          </script>
+          <object type="application/x-shockwave-flash" data="https://h.onlinemetrix.
+          net/fp/fp.swf?org_id=q5ua9sl2&amp;session_id=' . $session_id . '" width="1"
+          height="1">
+          <param name="movie" value="https://h.onlinemetrix.
+          net/fp/fp.swf?org_id=q5ua9sl2&amp;session_id=' . $session_id . '" />
+          <param name="wmode" value="transparent" />
+          <div></div>
+          </object>
+          <!- End profiling tags -->',
+       '#default_value' => $session_id,
+       '#value' => $session_id,
+     );
+   }
   }
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
     $form['#attached']['css'] = array(

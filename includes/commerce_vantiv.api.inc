@@ -14,6 +14,8 @@ class VantivApi {
     $this->merchant_id = !empty($settings['merchant_id']) ? trim($settings['merchant_id']) : '';
     $this->three_d = !empty($settings['3d_secure']) ? trim($settings['3d_secure']) : '';
     $this->transaction_type_process = !empty($settings['transaction_type_process']) ? trim($settings['transaction_type_process']) : '';
+    $this->advance_fraud = !empty($settings['advance_fraud']) ? trim($settings['advance_fraud']) : '';
+    $this->advance_fraud_key = !empty($settings['advance_fraud_key']) ? trim($settings['advance_fraud_key']) : '';
     $this->logs = !empty($settings['logs']) ? trim($settings['logs']) : '';
     $this->libraryLoad();
   }
@@ -34,7 +36,6 @@ class VantivApi {
   public function directPayments($customer_profile, $order, $card_info = '', $payment_method, $amount = '', $token = '', $fraud_id = '', $echeck = '', $end_echeck = '') {
     $currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
-
     $card_owner_name = $customer_profile->commerce_customer_address['und'][0]['name_line'];
     $user = user_load($order->uid);
     if (empty($token)) {
@@ -78,12 +79,12 @@ class VantivApi {
         $billing_data['card']['type'] = $this->cardTypes($card_info['credit_card']['type']);
       }
 
-      /*if (!empty($fraud_id)) {
+      if (!empty($fraud_id) and $this->advance_fraud == '0') {
         $billing_data['advancedFraudChecks'] = array(
           'threatMetrixSessionId' => $fraud_id,
         );
         $billing_data['threatMetrixSessionId'] = $fraud_id;
-      }*/
+      }
     }
     else {
       $billing_data = array(
@@ -124,6 +125,8 @@ class VantivApi {
         );
       }
     }
+    $billing_data['orderSource'] = '3dsAttempted';
+    $billing_data['authenticationValue'] = 'BwABBJQ1AgAAAAAgJDUCAAAAAAA=';
 
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
@@ -195,10 +198,13 @@ class VantivApi {
 
      if (!empty($card_info['credit']) and $card_info['credit'] == TRUE) {
        $response = $initilaize->echeckCreditRequest($billing_data);
+       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
      }
+
       if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
         $billing_data['accountNumber'] = $card_info['accNum'];
         $response = $initilaize->registerTokenRequest($billing_data);
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
       }
       elseif (empty($card_info['credit'])) {
         $response = $initilaize->echeckSaleRequest($billing_data);
@@ -217,8 +223,6 @@ class VantivApi {
    * Process cross payments.
    */
   public function crossPayment($transaction, $partial = '', $amount = '', $type = '') {
-    //self::libraryLoad();
-
     $billing_data = array(
           'user' => $this->user,
           'password' => $this->password,
@@ -267,9 +271,11 @@ class VantivApi {
       case 'void':
         if ($transaction->payment_method == 'vantiv_direct') {
         $response = $init->voidRequest($billing_data);
+        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         }
         elseif ($transaction->payment_method == 'vantiv_echeck') {
           $response = $init->echeckVoidRequest($billing_data);
+          $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         }
         break;
       case 'reversal':
@@ -338,6 +344,12 @@ class VantivApi {
     $number = litle\sdk\XmlParser::getNode($response, 'number');
     $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
 
+    // Fraud detection parameters.
+    $avs_result = litle\sdk\XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = litle\sdk\XmlParser::getNode($response, 'cardValidationResult');
+    $device_review_status = litle\sdk\XmlParser::getNode($response, 'deviceReviewStatus');
+    $device_reputation_score = litle\sdk\XmlParser::getNode($response, 'deviceReputationScore');
+
     if (!empty($echeckCreditResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'echeckCreditResponse', 'id');
       $payload_attribute = 'echeckCreditResponse';
@@ -370,8 +382,10 @@ class VantivApi {
       $id = litle\sdk\XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
       $payload_attribute = 'echeckSalesResponse';
     }
+    //Get the payload.
+    $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     //If the transaction was approved.
-    if ($response_code == '000' || $response_code == '801') {
+    if ($response_code == '000' || $response_code == '801' and (!empty($avs_result) and $avs_result == '00') and !empty($device_reputation_score) and $device_reputation_score >= 0) {
       if (!empty($order_id)) {
         $order = commerce_order_load($order_id);
       }
@@ -471,6 +485,43 @@ class VantivApi {
         elseif ($payment_method['method_id'] == 'vantiv_direct') {
           return $this->directPayments($customer_profile, $order, '', $payment_method, '', $litleToken);
         }
+      }
+    }
+    else {
+      if (!empty($order_id)) {
+        $order = commerce_order_load($order_id);
+      }
+      elseif (!empty($transaction)) {
+        $order = commerce_order_load($transaction->order_id);
+      }
+      // If an error occur.
+      if ($response_code != '000' || $response_code != '801' and empty($avs_result) and empty($device_reputation_score)) {
+        $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
+        $transaction->instance_id = $payment_method['instance_id'];
+        $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
+        $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
+        $transaction->remote_id = $litle_txn_id;
+        $transaction->remote_status = $message;
+        $transaction->message_variables = array('@auth_code' => $auth_code);
+        $transaction->data = array('auth_code' => $auth_code);
+        $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+        commerce_payment_transaction_save($transaction);
+      }
+      elseif (!empty($avs_result) and $avs_result != '00' or !empty($device_reputation_score) and $device_reputation_score < 0) {
+        $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
+        $transaction->instance_id = $payment_method['instance_id'];
+        $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
+        $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
+        $transaction->remote_id = $litle_txn_id;
+        $transaction->remote_status = $message;
+        $transaction->message_variables = array('@auth_code' => $auth_code);
+        $transaction->data = array('auth_code' => $auth_code);
+        $transaction->message = t('The transaction was not successful, a fraud was detected!');
+        $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+        commerce_payment_transaction_save($transaction);
+      }
+      if ($this->logs == 0) {
+        watchdog('commerce_vantiv', "The transaction was not successful, a fraud was detected! Parameters returned: device reputation score: @device_reputation_score, avs result: @avs_result, device review status: @device_review_status, card validation result: @card_validation_result", array('@card_validation_result' => $card_validation_result, '@device_reputation_score' => $device_reputation_score, '@avs_result' => $avs_result, '@device_review_status' => $device_review_status), WATCHDOG_ERROR);
       }
     }
   }
