@@ -81,7 +81,7 @@ class VantivApi {
         $billing_data['card']['type'] = $this->cardTypes($card_info['credit_card']['type']);
       }
 
-      if (!empty($fraud_id) and $this->advance_fraud == '0') {
+      if (!empty($fraud_id) and $this->advance_fraud == '1') {
         $billing_data['advancedFraudChecks'] = array(
           'threatMetrixSessionId' => $fraud_id,
         );
@@ -127,11 +127,11 @@ class VantivApi {
         );
       }
     }
+
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
     if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
       $response = $initilaize->creditRequest($billing_data);
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
     }
     // Check if this is credit card transaction.
     if ($echeck != TRUE) {
@@ -200,7 +200,6 @@ class VantivApi {
       if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
         $billing_data['accountNumber'] = $card_info['accNum'];
         $response = $initilaize->registerTokenRequest($billing_data);
-
       }
       elseif (empty($card_info['credit'])) {
         $response = $initilaize->echeckSaleRequest($billing_data);
@@ -218,8 +217,6 @@ class VantivApi {
    * Process cross payments.
    */
   public function crossPayment($transaction, $partial = '', $amount = '', $type = '', $batch = '') {
-    //self::libraryLoad();
-
     $billing_data = array(
           'user' => $this->user,
           'password' => $this->password,
@@ -271,7 +268,6 @@ class VantivApi {
         }
         elseif ($transaction->payment_method == 'vantiv_echeck') {
           $response = $init->echeckVoidRequest($billing_data);
-          $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
         }
         break;
       case 'reversal':
@@ -390,6 +386,7 @@ class VantivApi {
       elseif (!empty($transaction)) {
         $order = commerce_order_load($transaction->order_id);
       }
+
       // If the transaction is not registerTokenResponse.
       if (empty($registerTokenResponse)) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
@@ -400,6 +397,8 @@ class VantivApi {
         $transaction->remote_status = $message;
         $transaction->message_variables = array('@auth_code' => $auth_code);
         $transaction->data = array('auth_code' => $auth_code);
+        $transaction->data['avs_result'] = !empty($avs_result) ? $avs_result : '';
+        $transaction->data['card_validation_result'] = !empty($card_validation_result) ? $card_validation_result : '';
 
         //Get the payload.
         $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
@@ -434,6 +433,12 @@ class VantivApi {
             $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
           }
           drupal_set_message(t('An error occur, your transaction was not processed successfully.'), 'error');
+        }
+        if (!empty($avs_result)) {
+          $transaction->message = $transaction->message . '<br /><label style="color:#FF0000;">' . $this->avsResponseCodes($avs_result) . '</label>';
+        }
+        if (!empty($card_validation_result) and $card_validation_result != 'M') {
+          $transaction->message = $transaction->message . '<br /><label style="color:#FF0000;">' . cardValidationResponseCodes($card_validation_result) . '</label>';
         }
         commerce_payment_transaction_save($transaction);
       }
@@ -493,7 +498,7 @@ class VantivApi {
         $order = commerce_order_load($transaction->order_id);
       }
       // If an error occur.
-      if ($response_code != '000' || $response_code != '801' and empty($avs_result) and empty($device_reputation_score)) {
+      if ($response_code != '000' || $response_code != '801' /*and empty($avs_result) and empty($device_reputation_score)*/) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
         $transaction->instance_id = $payment_method['instance_id'];
         $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
@@ -502,16 +507,18 @@ class VantivApi {
         $transaction->remote_status = $message;
         $transaction->message_variables = array('@auth_code' => $auth_code);
         $transaction->data = array('auth_code' => $auth_code);
+        $transaction->data['avs_result'] = !empty($avs_result) ? $avs_result : '';
         $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
         commerce_payment_transaction_save($transaction);
       }
-      elseif (!empty($avs_result) and $avs_result != '00' or !empty($device_reputation_score) and $device_reputation_score < 0) {
+      elseif (/*!empty($avs_result) and $avs_result != '00' or */!empty($device_reputation_score) and $device_reputation_score < 0) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
         $transaction->instance_id = $payment_method['instance_id'];
         $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
         $transaction->currency_code = $order->commerce_order_total['und'][0]['currency_code'];
         $transaction->remote_id = $litle_txn_id;
         $transaction->remote_status = $message;
+        $transaction->data['avs_result'] = !empty($avs_result) ? $avs_result : '';
         $transaction->message_variables = array('@auth_code' => $auth_code);
         $transaction->data = array('auth_code' => $auth_code);
         $transaction->message = t('The transaction was not successful, a fraud was detected!');
@@ -605,8 +612,6 @@ class VantivApi {
         drupal_goto('admin/commerce/orders');
       }
       else {
-        $transaction = commerce_vantiv_load_last_saved_transaction($order->uid);
-        $transaction = reset($transaction);
         $result = array(
           'result' => TRUE,
           'transaction_id' => $transaction->transaction_id,
@@ -992,6 +997,83 @@ class VantivApi {
       }
     }
     return  $type;
+  }
+
+  public function avsResponseCodes($code) {
+    $result = array();
+    switch ($code) {
+      case '00' :
+          $result = t('5-Digit zip and address match');
+        break;
+      case '01' :
+          $result = t('9-Digit zip and address match');
+        break;
+      case '02' :
+          $result = t('Postal code and address match');
+        break;
+      case '10' :
+          $result = t('5-Digit zip matches, address does not match');
+        break;
+      case '11' :
+          $result = t('9-Digit zip matches, address does not match');
+        break;
+      case '12' :
+          $result = t('Zip does not match, address matches');
+        break;
+      case '13' :
+          $result = t('Postal code does not match, address matches');
+        break;
+      case '14' :
+          $result = t('Postal code matches, address not verified');
+        break;
+      case '20' :
+          $result = t('Neither zip nor address match');
+        break;
+      case '30' :
+          $result = t('AVS service not supported by issuer');
+        break;
+      case '31' :
+          $result = t('AVS system not available');
+        break;
+      case '32' :
+          $result = t('Address unavailable');
+        break;
+      case '33' :
+          $result = t('General error');
+        break;
+      case '34' :
+          $result = t('AVS not performed');
+        break;
+      case '40' :
+          $result = t('Address failed Litle & Co. edit checks');
+        break;
+    }
+    return $result;
+  }
+
+  public function cardValidationResponseCodes($code) {
+    switch ($code) {
+      case 'M' :
+          $result = t('Match');
+        break;
+      case 'N' :
+          $result = t('No Match');
+        break;
+      case 'P' :
+          $result = t('Not Processed');
+        break;
+      case 'S' :
+          $result = t('CVV2/CVC2/CID should be on the card, but the merchant
+                     has indicated CVV2/CVC2/CID is not present');
+        break;
+      case 'U' :
+          $result = t('Issuer is not certified for CVV2/CVC2/CID processing');
+        break;
+      case '' :
+          $result = t('Check was not done for an unspecified reason');
+        break;
+    }
+    return $result;
   }
 }
 

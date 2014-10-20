@@ -23,10 +23,11 @@ function commerce_vantiv_commerce_cardonfile_checkout_pane_form_alter(&$form, &$
           $new_array[$key] = $new_value_replace;
         }
       }
-      $new_array['new'] = t('Use a different credit card.');
+      $new_array['new'] = t('Use a different echeck account.');
       $form['cardonfile']['#options']  = $new_array;
       $form['cardonfile']['#default_value'] = 'new';
     }
+    $form['cardonfile']['#title'] = t('Select a stored echeck');
   }
   if ($form_state['commerce_payment']['payment_method']['#default_value'] == 'vantiv_direct|commerce_payment_vantiv_direct') {
     return $form;
@@ -86,38 +87,6 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
           ),
         );
       }
-   $api = commerce_vantiv_api_object();
-   $fraud_key = !empty($api->advance_fraud_key) ? $api->advance_fraud_key : '';
-   $reminder = $order->uid . '-' . time();
-   $session_id =  $fraud_key . '-' . $reminder;
-   if (!empty($fraud_key)) {
-     $form['hidden_fraud_kit'] = array(
-       '#type' => 'hidden',
-       '#title' => t('Hidden element.'),
-       '#prefix' => '<!-Begin ThreatMetrix profiling tags below -->
-          <!- note: replace UNIQUE_SESSION_ID with a uniquely generated handle
-          note: for production, replace h.online-metrix.net with a local URL and
-          configure your web server to redirect to h.online-metrix.net -->
-          <div style="background:url(https://h.online-metrix.net/fp/clear.png?org_id=
-          q5ua9sl2&amp;session_id=' . $session_id . '&amp;m=1)"> </div>
-          <img src="https://h.online-metrix.net/fp/clear.png?org_id=q5ua9sl2&amp;
-          session_id=' . $session_id . '&amp;m=2" />
-          <script src="https://h.online-metrix.net/fp/check.js?org_id=q5ua9sl2&amp;
-          session_id=' . $session_id . '&amp;pageid=##PAGEID##">
-          </script>
-          <object type="application/x-shockwave-flash" data="https://h.onlinemetrix.
-          net/fp/fp.swf?org_id=q5ua9sl2&amp;session_id=' . $session_id . '" width="1"
-          height="1">
-          <param name="movie" value="https://h.onlinemetrix.
-          net/fp/fp.swf?org_id=q5ua9sl2&amp;session_id=' . $session_id . '" />
-          <param name="wmode" value="transparent" />
-          <div></div>
-          </object>
-          <!- End profiling tags -->',
-       '#default_value' => $session_id,
-       '#value' => $session_id,
-     );
-   }
   }
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
     $form['#attached']['css'] = array(
@@ -146,6 +115,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       '#type' => 'textfield',
       '#title' => t('Account number') . ' <span class="star_required">*</span>',
       '#default_value' => '',
+      //'#required' => TRUE,
       '#attributes' => array('autocomplete' => 'off'),
       '#maxlength' => 17,
       '#size' => 17,
@@ -163,9 +133,18 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       '#type' => 'textfield',
       '#title' => t('Routing number') . ' <span class="star_required">*</span>',
       '#default_value' => '',
+      //'#required' => TRUE,
       '#attributes' => array('autocomplete' => 'off'),
       '#maxlength' => 9,
       '#size' => 9,
+      /*'#states' => array(
+        'visible' => array(
+          ':input[name$="[cardonfile]"]' => array('value' => 'new'),
+        ),
+        'invisible' => array(
+          ':input[name$="[cardonfile_store_card]"]' => array('checked' => TRUE),
+        ),
+      ),*/
     );
 
     $form['checkNum'] = array(
@@ -173,6 +152,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       '#title' => t('Check number') . ' <span class="star_required">*</span>',
       '#default_value' => '',
       '#attributes' => array('autocomplete' => 'off'),
+      //'#required' => TRUE,
       '#maxlength' => 15,
       '#size' => 15,
     );
@@ -217,7 +197,38 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
     }
 
   }
-
+   $api = commerce_vantiv_api_object();
+   $fraud_key = !empty($api->advance_fraud_key) ? $api->advance_fraud_key : '';
+   $reminder = $order->uid . '-' . time();
+   $session_id =  $fraud_key . '-' . $reminder;
+   if (!empty($fraud_key) and $api->advance_fraud == '1') {
+     $form['hidden_fraud_kit'] = array(
+       '#type' => 'hidden',
+       '#title' => t('Hidden element.'),
+       '#prefix' => '<!-Begin ThreatMetrix profiling tags below -->
+          <!- note: replace UNIQUE_SESSION_ID with a uniquely generated handle
+          note: for production, replace h.online-metrix.net with a local URL and
+          configure your web server to redirect to h.online-metrix.net -->
+          <div style="background:url(https://h.online-metrix.net/fp/clear.png?org_id=
+          q5ua9sl2&amp;session_id=' . $session_id . '&amp;m=1)"> </div>
+          <img src="https://h.online-metrix.net/fp/clear.png?org_id=q5ua9sl2&amp;
+          session_id=' . $session_id . '&amp;m=2" />
+          <script src="https://h.online-metrix.net/fp/check.js?org_id=q5ua9sl2&amp;
+          session_id=' . $session_id . '&amp;pageid=##PAGEID##">
+          </script>
+          <object type="application/x-shockwave-flash" data="https://h.onlinemetrix.
+          net/fp/fp.swf?org_id=q5ua9sl2&amp;session_id=' . $session_id . '" width="1"
+          height="1">
+          <param name="movie" value="https://h.onlinemetrix.
+          net/fp/fp.swf?org_id=q5ua9sl2&amp;session_id=' . $session_id . '" />
+          <param name="wmode" value="transparent" />
+          <div></div>
+          </object>
+          <!- End profiling tags -->',
+       '#default_value' => $session_id,
+       '#value' => $session_id,
+     );
+   }
   if (empty($checkout_pane) and !empty($payment_method)) {
     if ($payment_method['method_id'] == 'vantiv_direct') {
       $form['credit_card']['credit'] = array(
@@ -285,6 +296,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
       ),
       'invisible' => array(
         ':input[name$="[cardonfile_store]"]' => array('checked' => TRUE),
+       // '.commerce-month-year-divider' => array('checked' => TRUE),
       ),
     );
      $form['credit_card']['exp_year']['#states'] = array(
@@ -309,6 +321,10 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
   drupal_alter('commerce_vantiv_submit_form', $form, $payment_method);
 
   return $form;
+}
+
+
+function commerce_vantiv_commerce_vantiv_submit_form_alter($form, &$form_state) {
 }
 
 /**
@@ -386,10 +402,10 @@ function commerce_vantiv_submit_form_validate($payment_method, $pane_form, $pane
  * Performs http request.
  */
 function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $form_parents = array()) {
+  $api = commerce_vantiv_api_object();
   $customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
   // Direct transaction without using card on file.
   if ($payment_method['method_id'] == 'vantiv_direct') {
-    $api = commerce_vantiv_api_object();
     // Check if card should be credit.
     if (!empty($pane_values['credit_card']['credit']) and $pane_values['credit_card']['credit'] == TRUE) {
       if (!empty($form_parents['amount'])) {
@@ -406,6 +422,7 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
 
     if(!empty($pane_values['credit_card']['cardonfile_store']) and $pane_values['credit_card']['cardonfile_store'] == TRUE) {
       if (!empty($pane_values['hidden_fraud_kit'])) {
+        drupal_set_message('test1', 'status');
         $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit']);
       }
       else {
@@ -418,6 +435,8 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
       $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', $card->remote_id);
     }
     else {
+
+      //$result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method);
       if (!empty($pane_values['hidden_fraud_kit'])) {
         $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit']);
       }
@@ -427,7 +446,6 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
     }
   }
   elseif ($payment_method['method_id'] == 'vantiv_echeck') {
-    $api = commerce_vantiv_api_object(array(), $instance_id = 'vantiv_echeck|commerce_payment_vantiv_echeck')
     // Check if card should be credit.
     if (!empty($pane_values['credit']) and $pane_values['credit'] == TRUE) {
       if (!empty($form_parents['amount'])) {
@@ -447,7 +465,12 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
     }
     // Saves a new account.
     if(!empty($pane_values['credit_card']['cardonfile_store']) and $pane_values['credit_card']['cardonfile_store'] == TRUE and empty($pane_values['credit'])) {
+      if (!empty($pane_values['hidden_fraud_kit'])) {
+        $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit'], TRUE);
+      }
+      else {
         $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', '', TRUE);
+      }
     }
     // Use already saved account.
     elseif(!empty($pane_values['cardonfile']) and is_numeric($pane_values['cardonfile']) == TRUE and empty($pane_values['credit'])) {
@@ -457,15 +480,15 @@ function commerce_vantiv_submit_form_submit($payment_method, $pane_form, $pane_v
     }
     elseif (empty($pane_values['credit'])) {
       // No saved accounts to be used, just process the transaction.
+      if (!empty($pane_values['hidden_fraud_kit'])) {
+        $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', $pane_values['hidden_fraud_kit'], TRUE);
+      }
+      else {
         $result = $api->directPayments($customer_profile, $order, $pane_values, $payment_method, '', '', '', TRUE);
+      }
     }
 
   }
   return $result;
 }
-
-
-
-
-
 

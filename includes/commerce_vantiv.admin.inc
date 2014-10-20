@@ -16,7 +16,6 @@ function commerce_vantiv_capture_form($form, &$form_state, $order, $transaction)
   $form_state['payment_method'] = $payment_method;
 
   $balance = commerce_payment_order_balance($order);
-  dsm($balance, 'balance');
   if ($balance['amount'] > 0 && $balance['amount'] < $transaction->amount) {
     $default_amount = $balance['amount'];
   }
@@ -55,7 +54,6 @@ function commerce_vantiv_capture_form($form, &$form_state, $order, $transaction)
  * Validate handler: ensure a valid amount is given.
  */
 function commerce_vantiv_capture_form_validate($form, &$form_state) {
-  dsm($form_state, 'form_state');
   //form_set_error('amount', t('You cannot capture more than you authorized through Ogone.'));
   //return false;
 
@@ -97,16 +95,19 @@ function commerce_vantiv_capture_form_submit($form, &$form_state) {
 function commerce_vantiv_refund_form($form, &$form_state, $order, $transaction) {
   $form_state['order'] = $order;
   $form_state['transaction'] = $transaction;
-  dsm($transaction, 'transaction');
-  dsm($order, 'order');
   // Load and store the payment method instance for this transaction.
   $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
   $form_state['payment_method'] = $payment_method;
 
   // Order balance left.
   $balance = commerce_payment_order_balance($order);
-  dsm($balance, 'balance');
   $default_amount = $transaction->amount;
+  /*if ($balance['amount'] > 0 && $balance['amount'] < $transaction->amount) {
+    $default_amount = $transaction->amount;
+  }
+  else {
+    $default_amount = $balance['amount'];
+  }*/
 
   $default_amount = number_format(commerce_currency_amount_to_decimal($default_amount, $transaction->currency_code), 2, '.', '');
 
@@ -139,7 +140,6 @@ function commerce_vantiv_refund_form($form, &$form_state, $order, $transaction) 
  * Validate handler: ensure a valid amount is given.
  */
 function commerce_vantiv_refund_form_validate($form, &$form_state) {
-  dsm($form_state, 'form_state');
   //return false;
   $transaction = $form_state['transaction'];
   $amount = $form_state['values']['amount'];
@@ -180,15 +180,14 @@ function commerce_vantiv_refund_form_submit($form, &$form_state) {
 function commerce_vantiv_void_form($form, &$form_state, $order, $transaction) {
   $form_state['order'] = $order;
   $form_state['transaction'] = $transaction;
-  dsm($transaction, 'transaction');
-  dsm($order, 'order');
+
   // Load and store the payment method instance for this transaction.
   $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
   $form_state['payment_method'] = $payment_method;
 
   // Order balance left.
   $balance = commerce_payment_order_balance($order);
-  dsm($balance, 'balance');
+
   $default_amount = $transaction->amount;
 
   $default_amount = number_format(commerce_currency_amount_to_decimal($default_amount, $transaction->currency_code), 2, '.', '');
@@ -219,7 +218,7 @@ function commerce_vantiv_void_form($form, &$form_state, $order, $transaction) {
  * Validate handler: validates parameters.
  */
 function commerce_vantiv_void_form_validate($form, &$form_state) {
-  dsm($form_state, 'form_state');
+
 }
 
 /**
@@ -242,15 +241,13 @@ function commerce_vantiv_void_form_submit($form, &$form_state) {
 function commerce_vantiv_reversal_form($form, &$form_state, $order, $transaction) {
   $form_state['order'] = $order;
   $form_state['transaction'] = $transaction;
-  dsm($transaction, 'transaction');
-  dsm($order, 'order');
+
   // Load and store the payment method instance for this transaction.
   $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
   $form_state['payment_method'] = $payment_method;
 
   // Order balance left.
   $balance = commerce_payment_order_balance($order);
-  dsm($balance, 'balance');
   $default_amount = $transaction->amount;
 
   $default_amount = number_format(commerce_currency_amount_to_decimal($default_amount, $transaction->currency_code), 2, '.', '');
@@ -284,9 +281,6 @@ function commerce_vantiv_reversal_form($form, &$form_state, $order, $transaction
  * Validate handler: ensure a valid amount is given.
  */
 function commerce_vantiv_reversal_form_validate($form, &$form_state) {
-  dsm($form_state, 'form_state');
-
-  return false;
   $transaction = $form_state['transaction'];
   $amount = $form_state['values']['amount'];
   // Ensure a positive numeric amount has been entered for refund.
@@ -312,10 +306,8 @@ function commerce_vantiv_reversal_form_submit($form, &$form_state) {
   if ($form_state['build_info']['args'][0]->commerce_order_total['und'][0]['amount'] > $entered_amount) {
     $partial_reversal = TRUE;
     $amount = $entered_amount;
-    variable_set('initial', 1);
     $result = $api->crossPayment($transaction, $partial_reversal, $amount, 'reversal');
   }
-  variable_set('initial', 2);
   $result = $api->crossPayment($transaction, '', '', 'reversal');
 }
 

@@ -76,5 +76,4 @@ function commerce_vantiv_default_rules_configuration() {
 
   return $rules;
 
-  return $rules;
 }

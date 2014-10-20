@@ -3,8 +3,6 @@ function commerce_vantiv_requirements($phase) {
   $requirements = array();
 
   // Ensure translations don't break at install time.
-  $t = get_t();
-
   $path_litle = $_SERVER['DOCUMENT_ROOT'] . '/sites/all/libraries/litle';
   //Checks for the library during instalation process.
   if ($phase == 'install' && module_exists('libraries')) {
@@ -33,7 +31,7 @@ function commerce_vantiv_requirements($phase) {
           <br/>
           Download the required libraries from
           <a href="@library_url">the Litle GitHub project</a>
-          and place it in <code>@install_path</code>',
+          and place it in 111<code>@install_path</code>',
           array(
             '@library_url' => empty($library['download url']) ? 'https://github.com/LitleCo/litle-sdk-for-php' : $library['download url'],
             '@help_url' => url('https://drupal.org/project/commerce_vantiv'),
@@ -69,7 +67,7 @@ function commerce_vantiv_requirements($phase) {
           <br/>
           Download the required libraries from
           <a href="@library_url">the litle GitHub project</a>
-          and place it in <code>@install_path</code>',
+          and place it in 222<code>@install_path</code>',
           array(
             '@library_url' => empty($library['download url']) ? 'https://github.com/LitleCo/litle-sdk-for-php' : $library['download url'],
             '@help_url' => url('https://drupal.org/project/commerce_vantiv'),
