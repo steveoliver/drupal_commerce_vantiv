@@ -127,7 +127,6 @@ class VantivApi {
         );
       }
     }
-
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
     if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
@@ -146,7 +145,6 @@ class VantivApi {
         $response = $initilaize->registerTokenRequest($billing_data);
 
       }
-      //$response_code = litle\sdk\XmlParser::getNode($response, 'response');
       if (!empty($response)) {
         $this->processDirectTransactions($response, $payment_method, '', $card_info);
       }
@@ -264,7 +262,7 @@ class VantivApi {
         break;
       case 'void':
         if ($transaction->payment_method == 'vantiv_direct') {
-        $response = $init->voidRequest($billing_data);
+          $response = $init->voidRequest($billing_data);
         }
         elseif ($transaction->payment_method == 'vantiv_echeck') {
           $response = $init->echeckVoidRequest($billing_data);
@@ -283,10 +281,7 @@ class VantivApi {
     }
     elseif ($type == 'capture' /*and ($batch != TRUE or empty($batch))*/) {
       return $this->processCapturedTransactions($response, $payment_method, $transaction, '', $batch);
-    }/*
-    elseif ($type == 'capture' and $batch == TRUE) {
-      return $response;
-    }*/
+    }
 
     // Saves partial or fully refund transaction.
     if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'refund') {
@@ -386,7 +381,6 @@ class VantivApi {
       elseif (!empty($transaction)) {
         $order = commerce_order_load($transaction->order_id);
       }
-
       // If the transaction is not registerTokenResponse.
       if (empty($registerTokenResponse)) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
@@ -526,7 +520,8 @@ class VantivApi {
         commerce_payment_transaction_save($transaction);
       }
       if ($this->logs == 0) {
-        watchdog('commerce_vantiv', "The transaction was not successful, a fraud was detected! Parameters returned: device reputation score: @device_reputation_score, avs result: @avs_result, device review status: @device_review_status, card validation result: @card_validation_result", array('@card_validation_result' => $card_validation_result, '@device_reputation_score' => $device_reputation_score, '@avs_result' => $avs_result, '@device_review_status' => $device_review_status), WATCHDOG_ERROR);
+        $responses = transactionResponseCodes($response_code);
+        watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions ! Parameters returned: device reputation score: @device_reputation_score, avs result: @avs_result, device review status: @device_review_status, card validation result: @card_validation_result", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions'], '@card_validation_result' => $card_validation_result, '@device_reputation_score' => $device_reputation_score, '@avs_result' => $avs_result, '@device_review_status' => $device_review_status), WATCHDOG_ERROR);
       }
     }
   }
@@ -619,6 +614,10 @@ class VantivApi {
         return $result;
       }
     }
+    elseif ($this->logs == 0) {
+        $responses = transactionResponseCodes($response_code);
+        watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
+    }
   }
 
   /**
@@ -695,6 +694,10 @@ class VantivApi {
       }
       commerce_payment_transaction_save($transaction);
       drupal_goto('admin/commerce/orders');
+    }
+    elseif ($this->logs == 0) {
+      $responses = transactionResponseCodes($response_code);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
     }
   }
 
@@ -780,6 +783,10 @@ class VantivApi {
       commerce_payment_transaction_save($transaction);
       drupal_goto('admin/commerce/orders');
     }
+    elseif ($this->logs == 0) {
+      $responses = transactionResponseCodes($response_code);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
+    }
   }
 
   /**
@@ -862,6 +869,10 @@ class VantivApi {
       }
       commerce_payment_transaction_save($transaction);
       drupal_goto('admin/commerce/orders');
+    }
+    elseif ($this->logs == 0) {
+      $responses = transactionResponseCodes($response_code);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
     }
   }
 
@@ -2474,5 +2485,3 @@ class VantivApi {
     return $result;
   }
 }
-
-
