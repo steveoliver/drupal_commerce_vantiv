@@ -694,6 +694,16 @@ function commerce_vantiv_menu() {
     'weight' => 2,
   );
 
+  $items['admin/commerce/orders/batch'] = array(
+    'title' => 'Vantiv Capture',
+    'description' => 'Capture all pending transactions with batch process',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_vantiv_batch_form'),
+    'access callback' => TRUE,
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 100,
+  );
+
   return $items;
 }
 
