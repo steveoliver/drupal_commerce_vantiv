@@ -29,3 +29,60 @@ function commerce_vantiv_rules_action_info() {
 
   return $actions;
 }
+
+/**
+ * Implements hook_rules_condition_info().
+ */
+function commerce_vantiv_rules_condition_info() {
+  $condition = array();
+
+  $condition['commerce_vantiv_affluence'] = array(
+    'label' => t('Commerce vantiv affluence'),
+    'parameter' => array(
+      'order' => array(
+        'type' => 'commerce_order',
+        'label' => 'Order of the current user',
+        'description' => t('Order to be checked whether or not have a credit card issuer country.'),
+      ),
+
+      'order_affluence' => array(
+        'type' => 'text',
+        'label' => t('Operator'),
+        'options list' => 'commerce_vantiv_list_affluence',
+      ),
+
+    ),
+    'group' => t('Commerce Vantiv'),
+    'callbacks' => array(
+      'execute' => 'commerce_vantiv_compare_affluence',
+    ),
+  );
+
+  $condition['commerce_vantiv_card_issuer_country'] = array(
+    'label' => t('Commerce vantiv card issuer country'),
+    'parameter' => array(
+      'order' => array(
+        'type' => 'commerce_order',
+        'label' => 'Orders',
+        'description' => t('The order that will be checked whether or not it’s owner is affluent.'),
+      ),
+    ),
+    'group' => t('Commerce Vantiv'),
+    'callbacks' => array(
+      'execute' => 'commerce_vantiv_card_issuer_country',
+    ),
+  );
+
+  return $condition;
+}
+
+/**
+ * Creates option list.
+ */
+function commerce_vantiv_list_affluence() {
+  return array(
+    'affluent' => t('Affluent'),
+    'mass_affluent' => t('Mass affluent'),
+    'both' => t('Both'),
+  );
+}

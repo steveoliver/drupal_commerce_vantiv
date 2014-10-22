@@ -339,6 +339,10 @@ class VantivApi {
     $device_review_status = litle\sdk\XmlParser::getNode($response, 'deviceReviewStatus');
     $device_reputation_score = litle\sdk\XmlParser::getNode($response, 'deviceReputationScore');
 
+    // Insights.
+    $insights_affluence = litle\sdk\XmlParser::getNode($response, 'affluence');
+    $insights_issuer_country = litle\sdk\XmlParser::getNode($response, 'issuerCountry');
+
     if (!empty($echeckCreditResponse)) {
       $id = litle\sdk\XmlParser::getAttribute($response, 'echeckCreditResponse', 'id');
       $payload_attribute = 'echeckCreditResponse';
@@ -435,6 +439,16 @@ class VantivApi {
           $transaction->message = $transaction->message . '<br /><label style="color:#FF0000;">' . cardValidationResponseCodes($card_validation_result) . '</label>';
         }
         commerce_payment_transaction_save($transaction);
+        if (!empty($insights_affluence) and ($insights_affluence == 'AFFLUENT' or $insights_affluence == 'MASS AFFLUENT')) {
+          $user = user_load($order->uid);
+          $user->data['affluence'] = ($insights_affluence == 'AFFLUENT') ? t('AFFLUENT') : t('MASS AFFLUENT');
+          user_save($user);
+        }
+        // Saves the issuer.
+        if (!empty($insights_issuer_country)) {
+          $order->data['card_issuer_country'] = $insights_issuer_country;
+          commerce_order_save($order);
+        }
       }
       // Save card on file if required.
       if (!empty($litleToken) and !empty($registerTokenResponse)) {

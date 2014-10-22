@@ -1377,3 +1377,29 @@ function commerce_vantiv_load_all_pending_transactions($date = '', $transaction_
   }
   return $return;
 }
+
+function commerce_vantiv_compare_affluence($order, $parameter) {
+  $users = user_load($order->uid);
+  if (!empty($users_affluence) and $users_affluence == 'all') {
+
+  }
+  if ($users->data['affluence'] == 'AFFLUENT' and $parameter == 'affluent') {
+    return TRUE;
+  }
+  elseif ($users->data['affluence'] == 'MASS AFFLUENT' and $parameter == 'mass_affluent') {
+    return TRUE;
+  }
+  elseif (($users->data['affluence'] == 'AFFLUENT' or $users->data['affluence'] == 'MASS AFFLUENT') and $parameter == 'both') {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+function commerce_vantiv_card_issuer_country($order) {
+  if (!empty($order->data['card_issuer_country'])) {
+    return TRUE;
+  }
+  return FALSE;
+}
