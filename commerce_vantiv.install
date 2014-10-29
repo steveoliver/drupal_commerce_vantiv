@@ -3,7 +3,9 @@ function commerce_vantiv_requirements($phase) {
   $requirements = array();
 
   // Ensure translations don't break at install time.
-  $path_litle = $_SERVER['DOCUMENT_ROOT'] . '/sites/all/libraries/litle';
+  $t = get_t();
+  $mysite_extra_path = '/projects/drupal_test/vantiv_1';
+  $path_litle = $_SERVER['DOCUMENT_ROOT'] . $mysite_extra_path . '/sites/all/libraries/litle';
   //Checks for the library during instalation process.
   if ($phase == 'install' && module_exists('libraries')) {
     $library = libraries_get_libraries();

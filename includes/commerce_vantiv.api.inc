@@ -16,6 +16,7 @@ class VantivApi {
     $this->transaction_type_process = !empty($settings['transaction_type_process']) ? trim($settings['transaction_type_process']) : '';
     $this->advance_fraud = !empty($settings['advance_fraud']) ? trim($settings['advance_fraud']) : '';
     $this->advance_fraud_key = !empty($settings['advance_fraud_key']) ? trim($settings['advance_fraud_key']) : '';
+    $this->recycling = !empty($settings['recycling']) ? trim($settings['recycling']) : '1';
     $this->logs = !empty($settings['logs']) ? trim($settings['logs']) : '';
     $this->libraryLoad();
   }
@@ -127,6 +128,14 @@ class VantivApi {
         );
       }
     }
+
+    if ($this->recycling == '1') {
+      $billing_data['recyclingRequest'] = array(
+        'recycleBy' => 'Litle',
+        'recycleId' =>  time(),
+      );
+    }
+
     $initilaize = new litle\sdk\LitleOnlineRequest();
 
     if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
@@ -134,10 +143,10 @@ class VantivApi {
     }
     // Check if this is credit card transaction.
     if ($echeck != TRUE) {
-      if ($this->transaction_type_process == 'pre_auth' /*and empty($card_info['credit_card']['cardonfile_store'])*/ and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
+      if ($this->transaction_type_process == 'pre_auth' and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
         $response = $initilaize->authorizationRequest($billing_data);
       }
-      elseif ($this->transaction_type_process == 'sale' /*and empty($card_info['credit_card']['cardonfile_store'])*/and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store'])) and empty($card_info['credit_card']['credit'])) {
+      elseif ($this->transaction_type_process == 'sale' and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store'])) and empty($card_info['credit_card']['credit'])) {
         $response = $initilaize->saleRequest($billing_data);
       }
       elseif (!empty($card_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE) {
@@ -145,6 +154,7 @@ class VantivApi {
         $response = $initilaize->registerTokenRequest($billing_data);
 
       }
+      //$response_code = litle\sdk\XmlParser::getNode($response, 'response');
       if (!empty($response)) {
         $this->processDirectTransactions($response, $payment_method, '', $card_info);
       }
@@ -193,6 +203,7 @@ class VantivApi {
 
      if (!empty($card_info['credit']) and $card_info['credit'] == TRUE) {
        $response = $initilaize->echeckCreditRequest($billing_data);
+       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
      }
 
       if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
@@ -262,7 +273,7 @@ class VantivApi {
         break;
       case 'void':
         if ($transaction->payment_method == 'vantiv_direct') {
-          $response = $init->voidRequest($billing_data);
+        $response = $init->voidRequest($billing_data);
         }
         elseif ($transaction->payment_method == 'vantiv_echeck') {
           $response = $init->echeckVoidRequest($billing_data);
@@ -385,6 +396,7 @@ class VantivApi {
       elseif (!empty($transaction)) {
         $order = commerce_order_load($transaction->order_id);
       }
+
       // If the transaction is not registerTokenResponse.
       if (empty($registerTokenResponse)) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
@@ -534,7 +546,7 @@ class VantivApi {
         commerce_payment_transaction_save($transaction);
       }
       if ($this->logs == 0) {
-        $responses = transactionResponseCodes($response_code);
+        $responses = $this->transactionResponseCodes($response_code);
         watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions ! Parameters returned: device reputation score: @device_reputation_score, avs result: @avs_result, device review status: @device_review_status, card validation result: @card_validation_result", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions'], '@card_validation_result' => $card_validation_result, '@device_reputation_score' => $device_reputation_score, '@avs_result' => $avs_result, '@device_review_status' => $device_review_status), WATCHDOG_ERROR);
       }
     }
@@ -629,7 +641,7 @@ class VantivApi {
       }
     }
     elseif ($this->logs == 0) {
-        $responses = transactionResponseCodes($response_code);
+        $responses = $this->transactionResponseCodes($response_code);
         watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
     }
   }
@@ -710,7 +722,7 @@ class VantivApi {
       drupal_goto('admin/commerce/orders');
     }
     elseif ($this->logs == 0) {
-      $responses = transactionResponseCodes($response_code);
+      $responses = $this->transactionResponseCodes($response_code);
       watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
     }
   }
@@ -798,7 +810,7 @@ class VantivApi {
       drupal_goto('admin/commerce/orders');
     }
     elseif ($this->logs == 0) {
-      $responses = transactionResponseCodes($response_code);
+      $responses = $this->transactionResponseCodes($response_code);
       watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
     }
   }
@@ -885,7 +897,7 @@ class VantivApi {
       drupal_goto('admin/commerce/orders');
     }
     elseif ($this->logs == 0) {
-      $responses = transactionResponseCodes($response_code);
+      $responses = $this->transactionResponseCodes($response_code);
       watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
     }
   }
@@ -1547,7 +1559,7 @@ class VantivApi {
           'response_message' => t('Invalid Merchant'),
           'response_type' => t('Hard Decline'),
           'descriptions' => t('The card is not allowed to make purchases from this merchant
-            (e.g. a Travel only card trying to purchase electronics).)',
+            (e.g. a Travel only card trying to purchase electronics).'),
         );
         break;
       case '322' :
@@ -2035,7 +2047,7 @@ class VantivApi {
             of an alternate funding source will be attempted.'),
         );
         break;
-      case '610' :w
+      case '610' :
         $result = array(
           'response_message' => t('Hard Decline - Invalid Billing Agreement Id'),
           'response_type' => t('Hard Decline'),
