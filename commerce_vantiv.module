@@ -60,10 +60,10 @@ function commerce_vantiv_commerce_payment_method_info() {
 
   $payment_methods['vantiv_direct'] = array(
     'base' => 'commerce_vantiv',
-    'title' => t('Vantiv direcet payment'),
-    'short_title' => t('Vantiv direcet payment'),
-    'display_title' => t('Vantiv direcet payment'),
-    'description' => t('Vantiv direcet payment'),
+    'title' => t('Vantiv direct payment'),
+    'short_title' => t('Vantiv direct payment'),
+    'display_title' => t('Vantiv direct payment'),
+    'description' => t('Vantiv direct payment'),
     'terminal' => TRUE,
     'offsite' => FALSE,
     'offsite_autoredirect' => FALSE,

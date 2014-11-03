@@ -189,7 +189,7 @@ function commerce_vantiv_submit_form($payment_method, $pane_values, $checkout_pa
 
     $form['credit_card']['cardonfile_store'] = array(
       '#type' => 'checkbox',
-      '#title' => t('Store this check on file for further use.1111111'),
+      '#title' => t('Store this check on file for further use.'),
       '#default_value' => FALSE,
       '#states' => array(
         'visible' => array(
