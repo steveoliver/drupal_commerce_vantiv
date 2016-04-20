@@ -1,11 +1,16 @@
 <?php
 /**
- * API and hooks documentation for the Commerce Litle module.
+ * @file
+ * Commerce Vantiv payment module API class.
  */
 
+use litle\sdk\XmlParser;
+use litle\sdk\LitleOnlineRequest;
+
 class VantivApi {
+
   /**
-   * Set merchant credentials.
+   * Sets merchant credentials, settings, and loads libraries.
    */
   public function __construct($settings) {
     $this->account = !empty($settings['account']) ? trim($settings['account']) : '';
@@ -18,15 +23,15 @@ class VantivApi {
     $this->advance_fraud_key = !empty($settings['advance_fraud_key']) ? trim($settings['advance_fraud_key']) : '';
     $this->recycling = !empty($settings['recycling']) ? trim($settings['recycling']) : '1';
     $this->logs = !empty($settings['logs']) ? trim($settings['logs']) : '';
-    $this->libraryLoad();
+    $this->loadLibraries();
   }
 
   /**
    * Loads the library functions needed to process transactions.
    */
-  public function libraryLoad() {
+  public function loadLibraries() {
     if (defined('STDIN') != TRUE) {
-      define('STDIN',fopen("php://stdin","r"));
+      define('STDIN', fopen("php://stdin", "r"));
     }
     $library = libraries_info('litle');
     $load_library = libraries_load('litle');
@@ -34,9 +39,9 @@ class VantivApi {
   }
 
   /**
-   * Process direct payments.
+   * Processes direct payments.
    */
-  public function directPayments($customer_profile, $order, $card_info = '', $payment_method, $amount = '', $token = '', $fraud_id = '', $echeck = '', $end_echeck = '') {
+  public function processDirectPayment($customer_profile, $order, $payment_info = '', $payment_method, $amount = '', $token = '', $fraud_id = '', $echeck = '', $end_echeck = '') {
     $currency_code = empty($amount->currency_code) ? $order->commerce_order_total['und'][0]['currency_code'] : $amount->currency_code;
     $charge_amount = empty($amount->amount) ? $order->commerce_order_total['und'][0]['amount'] : $amount->amount;
     $card_owner_name = $customer_profile->commerce_customer_address['und'][0]['name_line'];
@@ -59,27 +64,28 @@ class VantivApi {
         'tcp_timeout' => '',
         'print_xml' => '',
         'orderId' => $order->order_id,
-  		  'amount' => $charge_amount,
+        'amount' => $charge_amount,
         'email' => 'nobody@litle.com',
         //id of auth or sale response in the xml tag.
-        'id'=> $order->order_id . '|' . time(),
-  		  'orderSource'=>'ecommerce',
-  		  'billToAddress'=>array(
-  		  'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
-  		  'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
-  		  'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
-  		  'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
-  		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
-  		  'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
-  		  'card' => array(
-    		  'number' => (!empty($card_info['credit_card']['number'])) ? $card_info['credit_card']['number'] : '',
-    		  'cardValidationNum' => (!empty($card_info['credit_card']['code'])) ? $card_info['credit_card']['code'] : '',
-  		  ),
+        'id' => $order->order_id . '|' . time(),
+        'orderSource' => 'ecommerce',
+        'billToAddress' => array(
+          'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
+          'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
+          'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
+          'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
+          'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
+          'country' => $customer_profile->commerce_customer_address['und'][0]['country']
+        ),
+        'card' => array(
+          'number' => (!empty($payment_info['credit_card']['number'])) ? $payment_info['credit_card']['number'] : '',
+          'cardValidationNum' => (!empty($payment_info['credit_card']['code'])) ? $payment_info['credit_card']['code'] : '',
+        ),
       );
 
-      if (!empty($card_info['credit_card']['number']) and !empty($card_info['credit_card']['exp_month']) and !empty($card_info['credit_card']['exp_year'])) {
-        $billing_data['card']['expDate'] = $card_info['credit_card']['exp_month'] . substr($card_info['credit_card']['exp_year'], 2, 4);
-        $billing_data['card']['type'] = $this->cardTypes($card_info['credit_card']['type']);
+      if (!empty($payment_info['credit_card']['number']) and !empty($payment_info['credit_card']['exp_month']) and !empty($payment_info['credit_card']['exp_year'])) {
+        $billing_data['card']['expDate'] = $payment_info['credit_card']['exp_month'] . substr($payment_info['credit_card']['exp_year'], 2, 4);
+        $billing_data['card']['type'] = $this->cardTypes($payment_info['credit_card']['type']);
       }
 
       if (!empty($fraud_id) and $this->advance_fraud == '1') {
@@ -107,17 +113,18 @@ class VantivApi {
         'tcp_timeout' => '',
         'print_xml' => '',
         'orderId' => $order->order_id,
-  		  'amount' => $charge_amount,
-        //id of auth or sale response in the xml tag.
-        'id'=> $order->order_id . '|' . time(),
-  		  'orderSource'=>'ecommerce',
-  		  'billToAddress' => array(
-  		  'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
-  	   	'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
-  		  'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
-  		  'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
-  		  'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
-  		  'country' => $customer_profile->commerce_customer_address['und'][0]['country']),
+        'amount' => $charge_amount,
+        // id of auth or sale response in the xml tag.
+        'id' => $order->order_id . '|' . time(),
+        'orderSource' => 'ecommerce',
+        'billToAddress' => array(
+          'name' => $customer_profile->commerce_customer_address['und'][0]['name_line'],
+          'addressLine1' => $customer_profile->commerce_customer_address['und'][0]['thoroughfare'],
+          'city' => $customer_profile->commerce_customer_address['und'][0]['locality'],
+          'state' => $customer_profile->commerce_customer_address['und'][0]['administrative_area'],
+          'zip' => $customer_profile->commerce_customer_address['und'][0]['postal_code'],
+          'country' => $customer_profile->commerce_customer_address['und'][0]['country']
+        ),
         /*'token' => array(
           'litleToken' => $token,
         ),*/
@@ -132,31 +139,31 @@ class VantivApi {
     if ($this->recycling == '1') {
       $billing_data['recyclingRequest'] = array(
         'recycleBy' => 'Litle',
-        'recycleId' =>  time(),
+        'recycleId' => time(),
       );
     }
 
-    $initilaize = new litle\sdk\LitleOnlineRequest();
+    $request = new LitleOnlineRequest();
 
-    if (!empty($card_info['credit_card']['credit']) and $card_info['credit_card']['credit']) {
-      $response = $initilaize->creditRequest($billing_data);
+    if (!empty($payment_info['credit_card']['credit']) and $payment_info['credit_card']['credit']) {
+      $response = $request->creditRequest($billing_data);
     }
     // Check if this is credit card transaction.
     if ($echeck != TRUE) {
-      if ($this->transaction_type_process == 'pre_auth' and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store']))) {
-        $response = $initilaize->authorizationRequest($billing_data);
+      if ($this->transaction_type_process == 'pre_auth' and (is_object($payment_info) == TRUE or empty($payment_info['credit_card']['cardonfile_store']))) {
+        $response = $request->authorizationRequest($billing_data);
       }
-      elseif ($this->transaction_type_process == 'sale' and (is_object($card_info) == TRUE or empty($card_info['credit_card']['cardonfile_store'])) and empty($card_info['credit_card']['credit'])) {
-        $response = $initilaize->saleRequest($billing_data);
+      elseif ($this->transaction_type_process == 'sale' and (is_object($payment_info) == TRUE or empty($payment_info['credit_card']['cardonfile_store'])) and empty($payment_info['credit_card']['credit'])) {
+        $response = $request->saleRequest($billing_data);
       }
-      elseif (!empty($card_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE) {
-        $billing_data['accountNumber'] = $card_info['credit_card']['number'];
-        $response = $initilaize->registerTokenRequest($billing_data);
+      elseif (!empty($payment_info['credit_card']['cardonfile_store']) /*and $card_info['credit_card']['cardonfile_store'] == TRUE*/ and is_object($payment_info) != TRUE and is_array($payment_info) == TRUE and $payment_info['credit_card']['cardonfile_store'] == TRUE) {
+        $billing_data['accountNumber'] = $payment_info['credit_card']['number'];
+        $response = $request->registerTokenRequest($billing_data);
 
       }
-      //$response_code = litle\sdk\XmlParser::getNode($response, 'response');
+      // $response_code = XmlParser::getNode($response, 'response');
       if (!empty($response)) {
-        $this->processDirectTransactions($response, $payment_method, '', $card_info);
+        $this->processTransactionFromResponse($response, $payment_method, '', $payment_info);
       }
       else {
         watchdog('commerce_vantiv', "An error occur with order# @order during the request, the server did not respond.", array('@order' => $order->order_id), WATCHDOG_ERROR);
@@ -164,7 +171,7 @@ class VantivApi {
     }
     // If this is an eCheck transaction.
     elseif ($echeck == TRUE) {
-      if  (module_exists('commerce_shipping')) {
+      if (module_exists('commerce_shipping')) {
         unset($customer_profile);
         $customer_profile = commerce_customer_profile_load($order->commerce_customer_shipping['und'][0]['profile_id']);
       }
@@ -177,44 +184,44 @@ class VantivApi {
       );
       if (empty($token)) {
         $billing_data['echeck'] = array(
-          'accType' => $card_info['accType'],
-          'accNum' => $card_info['accNum'],
-          'routingNum' => $card_info['routingNum'],
-          'checkNum' => $card_info['checkNum'],
+          'accType' => $payment_info['accType'],
+          'accNum' => $payment_info['accNum'],
+          'routingNum' => $payment_info['routingNum'],
+          'checkNum' => $payment_info['checkNum'],
         );
       }
-      elseif (!empty($token) and (!empty($card_info['new_card_id']) or !empty($card_info['cardonfile']))) {
-        $card = !empty($card_info['new_card_id']) ? commerce_cardonfile_load($card_info['new_card_id']) : commerce_cardonfile_load($card_info['cardonfile']);
+      elseif (!empty($token) and (!empty($payment_info['new_card_id']) or !empty($payment_info['cardonfile']))) {
+        $card = !empty($payment_info['new_card_id']) ? commerce_cardonfile_load($payment_info['new_card_id']) : commerce_cardonfile_load($payment_info['cardonfile']);
         $billing_data['echeckToken'] = array(
           'litleToken' => $token,
-          'accType' => $card_info['accType'],
-          'routingNum' => $card_info['routingNum'],
-          'checkNum' => $card_info['checkNum'],
+          'accType' => $payment_info['accType'],
+          'routingNum' => $payment_info['routingNum'],
+          'checkNum' => $payment_info['checkNum'],
         );
       }
-      elseif (!empty($token) and !empty($card_info['credit']) and $card_info['credit'] == TRUE) {
+      elseif (!empty($token) and !empty($payment_info['credit']) and $payment_info['credit'] == TRUE) {
         $billing_data['echeckToken'] = array(
           'litleToken' => $token,
-          'accType' => $card_info['accType'],
-          'routingNum' => $card_info['routingNum'],
-          'checkNum' => $card_info['checkNum'],
+          'accType' => $payment_info['accType'],
+          'routingNum' => $payment_info['routingNum'],
+          'checkNum' => $payment_info['checkNum'],
         );
       }
 
-     if (!empty($card_info['credit']) and $card_info['credit'] == TRUE) {
-       $response = $initilaize->echeckCreditRequest($billing_data);
-       $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-     }
-
-      if (!empty($card_info['credit_card']['cardonfile_store']) and is_object($card_info) != TRUE and is_array($card_info) == TRUE and $card_info['credit_card']['cardonfile_store'] == TRUE and empty($card_info['new_card_id'])) {
-        $billing_data['accountNumber'] = $card_info['accNum'];
-        $response = $initilaize->registerTokenRequest($billing_data);
+      if (!empty($payment_info['credit']) and $payment_info['credit'] == TRUE) {
+        $response = $request->echeckCreditRequest($billing_data);
+        $payload = XmlParser::getDomDocumentAsString($response);
       }
-      elseif (empty($card_info['credit'])) {
-        $response = $initilaize->echeckSaleRequest($billing_data);
+
+      if (!empty($payment_info['credit_card']['cardonfile_store']) and is_object($payment_info) != TRUE and is_array($payment_info) == TRUE and $payment_info['credit_card']['cardonfile_store'] == TRUE and empty($payment_info['new_card_id'])) {
+        $billing_data['accountNumber'] = $payment_info['accNum'];
+        $response = $request->registerTokenRequest($billing_data);
+      }
+      elseif (empty($payment_info['credit'])) {
+        $response = $request->echeckSaleRequest($billing_data);
       }
       if (!empty($response)) {
-        return $this->processDirectTransactions($response, $payment_method, '', $card_info);
+        return $this->processTransactionFromResponse($response, $payment_method, '', $payment_info);
       }
       else {
         watchdog('commerce_vantiv', "An error occur with order# @order during the request, the server did not respond.", array('@order' => $order->order_id), WATCHDOG_ERROR);
@@ -223,27 +230,27 @@ class VantivApi {
   }
 
   /**
-   * Process cross payments.
+   * Processes a cross payment.
    */
-  public function crossPayment($transaction, $partial = '', $amount = '', $type = '', $batch = '') {
+  public function processCrossPayment($transaction, $partial = '', $amount = '', $type = '', $batch = '') {
     $billing_data = array(
-          'user' => $this->user,
-          'password' => $this->password,
-          'merchantId' => $this->merchant_id,
-          'reportGroup' => 'rtpGrp',
-          'url' => $this->accountLinks($this->account),
-          'litle_requests_path' => $this->accountLinks($this->account),
-          'batch_requests_path' => '',
-          'proxy' => '',
-          'sftp_username' => '',
-          'sftp_password' => '',
-          'batch_url' => '',
-          'tcp_port' => '',
-          'tcp_ssl' => '',
-          'tcp_timeout' => '',
-          'print_xml' => '',
-          'id'=> $transaction->data['id'],
-          'litleTxnId' => $transaction->remote_id,
+      'user' => $this->user,
+      'password' => $this->password,
+      'merchantId' => $this->merchant_id,
+      'reportGroup' => 'rtpGrp',
+      'url' => $this->accountLinks($this->account),
+      'litle_requests_path' => $this->accountLinks($this->account),
+      'batch_requests_path' => '',
+      'proxy' => '',
+      'sftp_username' => '',
+      'sftp_password' => '',
+      'batch_url' => '',
+      'tcp_port' => '',
+      'tcp_ssl' => '',
+      'tcp_timeout' => '',
+      'print_xml' => '',
+      'id' => $transaction->data['id'],
+      'litleTxnId' => $transaction->remote_id,
     );
 
     // Add additional parameters for partial capture and refund transactions.
@@ -261,26 +268,26 @@ class VantivApi {
       $partial_amount = $amount;
     }
 
-    $init = new litle\sdk\LitleOnlineRequest();
+    $request = new LitleOnlineRequest();
 
     // Perform the http request.
     switch ($type) {
       case 'capture':
-        $response = $init->captureRequest($billing_data);
+        $response = $request->captureRequest($billing_data);
         break;
       case 'refund':
-        $response = $init->creditRequest($billing_data);
+        $response = $request->creditRequest($billing_data);
         break;
       case 'void':
         if ($transaction->payment_method == 'vantiv_direct') {
-        $response = $init->voidRequest($billing_data);
+          $response = $request->voidRequest($billing_data);
         }
         elseif ($transaction->payment_method == 'vantiv_echeck') {
-          $response = $init->echeckVoidRequest($billing_data);
+          $response = $request->echeckVoidRequest($billing_data);
         }
         break;
       case 'reversal':
-        $response = $init->authReversalRequest($billing_data);
+        $response = $request->authReversalRequest($billing_data);
         break;
     }
 
@@ -288,18 +295,18 @@ class VantivApi {
 
     // Saves partial or fully captured transaction.
     if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'capture' /*and ($batch != TRUE or empty($batch))*/) {
-      $this->processCapturedTransactions($response, $payment_method, $transaction, $partial_amount);
+      $this->processCaptureTransaction($response, $payment_method, $transaction, $partial_amount);
     }
     elseif ($type == 'capture' /*and ($batch != TRUE or empty($batch))*/) {
-      return $this->processCapturedTransactions($response, $payment_method, $transaction, '', $batch);
+      return $this->processCaptureTransaction($response, $payment_method, $transaction, '', $batch);
     }
 
     // Saves partial or fully refund transaction.
     if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'refund') {
-      $this->processRefundedTransactions($response, $payment_method, $transaction, $partial_amount);
+      $this->processRefundTransaction($response, $payment_method, $transaction, $partial_amount);
     }
     elseif ($type == 'refund') {
-      $this->processRefundedTransactions($response, $payment_method, $transaction);
+      $this->processRefundTransaction($response, $payment_method, $transaction);
     }
 
     // Updates voided transaction.
@@ -309,86 +316,85 @@ class VantivApi {
 
     // Saves partial or full reversed auth transaction.
     if (!empty($partial) and $partial == TRUE and !empty($amount) and $type == 'reversal') {
-      $this->processReversedTransactions($response, $payment_method, $transaction, $partial_amount);
+      $this->processReverseTransaction($response, $payment_method, $transaction, $partial_amount);
     }
     elseif ($type == 'reversal') {
-      $this->processReversedTransactions($response, $payment_method, $transaction);
+      $this->processReverseTransaction($response, $payment_method, $transaction);
     }
   }
 
   /**
-   * Process the transaction according to the respond.
+   * Processes a transaction according to a response.
    */
-  public function processDirectTransactions($response, $payment_method, $transaction = '', $card_info) {
+  public function processTransactionFromResponse($response, $payment_method, $transaction = '', $payment_info) {
     // Get response information.
-    $response_code = litle\sdk\XmlParser::getNode($response,'response');
-    $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-    $message = litle\sdk\XmlParser::getNode($response,'message');
-    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-    $creditResponse = litle\sdk\XmlParser::getNode($response,'creditResponse');
-    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+    $response_code = XmlParser::getNode($response, 'response');
+    $order_id = XmlParser::getNode($response, 'orderId');
+    $response_time = XmlParser::getNode($response, 'responseTime');
+    $message = XmlParser::getNode($response, 'message');
+    $auth_code = XmlParser::getNode($response, 'authCode');
+    $creditResponse = XmlParser::getNode($response, 'creditResponse');
+    $avs_result = XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+    $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
 
-    $authorizationResponse = litle\sdk\XmlParser::getNode($response,'authorizationResponse');
-    $saleResponse = litle\sdk\XmlParser::getNode($response,'saleResponse');
-    $registerTokenResponse = litle\sdk\XmlParser::getNode($response,'registerTokenResponse');
-    $echeckSalesResponse = litle\sdk\XmlParser::getNode($response,'echeckSalesResponse');
-    $echeckCreditResponse = litle\sdk\XmlParser::getNode($response,'echeckCreditResponse');
+    $authorizationResponse = XmlParser::getNode($response, 'authorizationResponse');
+    $saleResponse = XmlParser::getNode($response, 'saleResponse');
+    $registerTokenResponse = XmlParser::getNode($response, 'registerTokenResponse');
+    $echeckSalesResponse = XmlParser::getNode($response, 'echeckSalesResponse');
+    $echeckCreditResponse = XmlParser::getNode($response, 'echeckCreditResponse');
 
     // Get new data from account updater if changes were made.
-    $accountUpdater = litle\sdk\XmlParser::getNode($response, 'accountUpdater');
-    $newCardInfo = litle\sdk\XmlParser::getNode($response, 'newCardInfo');
-    $type = litle\sdk\XmlParser::getNode($response, 'type');
-    $number = litle\sdk\XmlParser::getNode($response, 'number');
-    $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
+    $accountUpdater = XmlParser::getNode($response, 'accountUpdater');
+    $newCardInfo = XmlParser::getNode($response, 'newCardInfo');
+    $type = XmlParser::getNode($response, 'type');
+    $number = XmlParser::getNode($response, 'number');
+    $expDate = XmlParser::getNode($response, 'expDate');
 
     // Fraud detection parameters.
-    $avs_result = litle\sdk\XmlParser::getNode($response, 'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($response, 'cardValidationResult');
-    $device_review_status = litle\sdk\XmlParser::getNode($response, 'deviceReviewStatus');
-    $device_reputation_score = litle\sdk\XmlParser::getNode($response, 'deviceReputationScore');
+    $avs_result = XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+    $device_review_status = XmlParser::getNode($response, 'deviceReviewStatus');
+    $device_reputation_score = XmlParser::getNode($response, 'deviceReputationScore');
 
     // Insights.
-    $insights_affluence = litle\sdk\XmlParser::getNode($response, 'affluence');
-    $insights_issuer_country = litle\sdk\XmlParser::getNode($response, 'issuerCountry');
+    $insights_affluence = XmlParser::getNode($response, 'affluence');
+    $insights_issuer_country = XmlParser::getNode($response, 'issuerCountry');
 
     if (!empty($echeckCreditResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'echeckCreditResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'echeckCreditResponse', 'id');
       $payload_attribute = 'echeckCreditResponse';
-      $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+      $litleToken = XmlParser::getNode($response, 'litleToken');
     }
-
     if (!empty($creditResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'creditResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'creditResponse', 'id');
       $payload_attribute = 'creditResponse';
-      $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+      $litleToken = XmlParser::getNode($response, 'litleToken');
     }
     if (!empty($authorizationResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'authorizationResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'authorizationResponse', 'id');
       $payload_attribute = 'authorizationResponse';
     }
     if (!empty($captureResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'captureResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'captureResponse', 'id');
       $payload_attribute = 'captureResponse';
     }
     if (!empty($registerTokenResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'registerTokenResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'registerTokenResponse', 'id');
       $payload_attribute = 'registerTokenResponse';
-      $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+      $litleToken = XmlParser::getNode($response, 'litleToken');
     }
     if (!empty($saleResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'saleResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'saleResponse', 'id');
       $payload_attribute = 'saleResponse';
     }
     if (!empty($echeckSalesResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
       $payload_attribute = 'echeckSalesResponse';
     }
-    //Get the payload.
-    $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-    //If the transaction was approved.
+    // Get the payload.
+    $payload = XmlParser::getDomDocumentAsString($response);
+    // If the transaction was approved.
     if ($response_code == '000' || $response_code == '801' and (empty($device_reputation_score) or $device_reputation_score >= 0)) {
       if (!empty($order_id)) {
         $order = commerce_order_load($order_id);
@@ -410,11 +416,10 @@ class VantivApi {
         $transaction->data['avs_result'] = !empty($avs_result) ? $avs_result : '';
         $transaction->data['card_validation_result'] = !empty($card_validation_result) ? $card_validation_result : '';
 
-        //Get the payload.
-        $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+        // Get the payload.
+        $payload = XmlParser::getDomDocumentAsString($response);
         $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
         $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
-
 
         if (!empty($authorizationResponse)) {
           $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
@@ -438,7 +443,10 @@ class VantivApi {
         else {
           if (!empty($message) and !empty($order)) {
             if ($this->logs == 0) {
-              watchdog('commerce_vantiv', "The order# @order was cancelled, due to @message", array('@order' => $order->order_id, '@message' => $message), WATCHDOG_ERROR);
+              watchdog('commerce_vantiv', "The order# @order was cancelled, due to @message", array(
+                '@order' => $order->order_id,
+                '@message' => $message
+              ), WATCHDOG_ERROR);
             }
             $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
           }
@@ -470,15 +478,15 @@ class VantivApi {
         $card_data->remote_id = $litleToken;
         $card_data->payment_method = $payment_method['method_id'];
         $card_data->instance_id = $payment_method['instance_id'];
-        $card_data->card_type = !empty($card_info['credit_card']['type']) ? strtolower($card_info['credit_card']['type']) : '';
+        $card_data->card_type = !empty($payment_info['credit_card']['type']) ? strtolower($payment_info['credit_card']['type']) : '';
         $card_data->card_name = !empty($customer_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line']) ? $customer_profile->commerce_customer_address[LANGUAGE_NONE][0]['name_line'] : $order['credit_card']['owner']['#value'];
-        $card_data->card_number = !empty($card_info['credit_card']['number']) ? drupal_substr($card_info['credit_card']['number'], -4) : '';
-        $card_data->card_exp_month = !empty($card_info['credit_card']['exp_month']) ? $card_info['credit_card']['exp_month'] : '';
-        $card_data->card_exp_year = !empty($card_info['credit_card']['exp_year']) ? $card_info['credit_card']['exp_year'] : '';
+        $card_data->card_number = !empty($payment_info['credit_card']['number']) ? drupal_substr($payment_info['credit_card']['number'], -4) : '';
+        $card_data->card_exp_month = !empty($payment_info['credit_card']['exp_month']) ? $payment_info['credit_card']['exp_month'] : '';
+        $card_data->card_exp_year = !empty($payment_info['credit_card']['exp_year']) ? $payment_info['credit_card']['exp_year'] : '';
         $card_data->status = 1;
         if ($payment_method['method_id'] == 'vantiv_echeck') {
-          $card_data->card_type = $card_info['accType'];
-          $card_data->card_number = drupal_substr($card_info['accNum'], -4);
+          $card_data->card_type = $payment_info['accType'];
+          $card_data->card_number = drupal_substr($payment_info['accNum'], -4);
         }
         if (!empty($accountUpdater) and !empty($newCardInfo) and $payment_method['method_id'] != 'vantiv_echeck') {
           $card_type = $api->cardTypes('', $type);
@@ -495,18 +503,18 @@ class VantivApi {
           $card_data->card_exp_year = '2100';
         }
         commerce_cardonfile_save($card_data);
-        $card_info['cardonfile_store'] = '';
+        $payment_info['cardonfile_store'] = '';
         if ($payment_method['method_id'] == 'vantiv_echeck') {
           $order = commerce_order_load($order_id);
           $card = commerce_vantiv_load_last_saved_cof($order->uid);
-          $card_info['new_card_id'] = $card->card_id;
-          $card_info['cardonfile'] = '';
-          $card_info['credit_card']['cardonfile_store'] = '';
-          return $this->directPayments($customer_profile, $order, $card_info, $payment_method, '', $litleToken, '', TRUE, 1);
+          $payment_info['new_card_id'] = $card->card_id;
+          $payment_info['cardonfile'] = '';
+          $payment_info['credit_card']['cardonfile_store'] = '';
+          return $this->processDirectPayment($customer_profile, $order, $payment_info, $payment_method, '', $litleToken, '', TRUE, 1);
 
         }
         elseif ($payment_method['method_id'] == 'vantiv_direct') {
-          return $this->directPayments($customer_profile, $order, '', $payment_method, '', $litleToken);
+          return $this->processDirectPayment($customer_profile, $order, '', $payment_method, '', $litleToken);
         }
       }
     }
@@ -531,7 +539,9 @@ class VantivApi {
         $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
         commerce_payment_transaction_save($transaction);
       }
-      elseif (/*!empty($avs_result) and $avs_result != '00' or */!empty($device_reputation_score) and $device_reputation_score < 0) {
+      elseif (/*!empty($avs_result) and $avs_result != '00' or */
+        !empty($device_reputation_score) and $device_reputation_score < 0
+      ) {
         $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
         $transaction->instance_id = $payment_method['instance_id'];
         $transaction->amount = $order->commerce_order_total['und'][0]['amount'];
@@ -547,29 +557,37 @@ class VantivApi {
       }
       if ($this->logs == 0) {
         $responses = $this->transactionResponseCodes($response_code);
-        watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions ! Parameters returned: device reputation score: @device_reputation_score, avs result: @avs_result, device review status: @device_review_status, card validation result: @card_validation_result", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions'], '@card_validation_result' => $card_validation_result, '@device_reputation_score' => $device_reputation_score, '@avs_result' => $avs_result, '@device_review_status' => $device_review_status), WATCHDOG_ERROR);
+        watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions ! Parameters returned: device reputation score: @device_reputation_score, avs result: @avs_result, device review status: @device_review_status, card validation result: @card_validation_result", array(
+          '@respons_message' => $responses['response_message'],
+          '@type' => $responses['response_type'],
+          '@descriptions' => $responses['descriptions'],
+          '@card_validation_result' => $card_validation_result,
+          '@device_reputation_score' => $device_reputation_score,
+          '@avs_result' => $avs_result,
+          '@device_review_status' => $device_review_status
+        ), WATCHDOG_ERROR);
       }
     }
   }
 
   /**
-   * Process captured transactions.
+   * Processes a captured transaction.
    */
-  public function processCapturedTransactions($response, $payment_method, $transaction, $partial_amount = '', $batch = '') {
+  public function processCaptureTransaction($response, $payment_method, $transaction, $partial_amount = '', $batch = '') {
     // Get response information.
-    $response_code = litle\sdk\XmlParser::getNode($response,'response');
-    $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-    $message = litle\sdk\XmlParser::getNode($response,'message');
-    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+    $response_code = XmlParser::getNode($response, 'response');
+    $order_id = XmlParser::getNode($response, 'orderId');
+    $response_time = XmlParser::getNode($response, 'responseTime');
+    $message = XmlParser::getNode($response, 'message');
+    $auth_code = XmlParser::getNode($response, 'authCode');
+    $avs_result = XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+    $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
 
-    $captureResponse = litle\sdk\XmlParser::getNode($response,'captureResponse');
+    $captureResponse = XmlParser::getNode($response, 'captureResponse');
 
     if (!empty($captureResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'captureResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'captureResponse', 'id');
       $payload_attribute = 'captureResponse';
     }
 
@@ -608,7 +626,7 @@ class VantivApi {
       $transaction->message_variables = array('@auth_code' => $auth_code);
 
       // Get the payload.
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      $payload = XmlParser::getDomDocumentAsString($response);
       $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
       $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
 
@@ -641,29 +659,33 @@ class VantivApi {
       }
     }
     elseif ($this->logs == 0) {
-        $responses = $this->transactionResponseCodes($response_code);
-        watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
+      $responses = $this->transactionResponseCodes($response_code);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array(
+        '@respons_message' => $responses['response_message'],
+        '@type' => $responses['response_type'],
+        '@descriptions' => $responses['descriptions']
+      ), WATCHDOG_ERROR);
     }
   }
 
   /**
-   * Process refunded transactions.
+   * Processes a refund transaction.
    */
-  public function processRefundedTransactions($response, $payment_method, $transaction, $partial_amount = '') {
+  public function processRefundTransaction($response, $payment_method, $transaction, $partial_amount = '') {
     //Get response information.
-    $response_code = litle\sdk\XmlParser::getNode($response,'response');
-    $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-    $message = litle\sdk\XmlParser::getNode($response,'message');
-    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+    $response_code = XmlParser::getNode($response, 'response');
+    $order_id = XmlParser::getNode($response, 'orderId');
+    $response_time = XmlParser::getNode($response, 'responseTime');
+    $message = XmlParser::getNode($response, 'message');
+    $auth_code = XmlParser::getNode($response, 'authCode');
+    $avs_result = XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+    $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
 
-    $creditResponse = litle\sdk\XmlParser::getNode($response,'creditResponse');
+    $creditResponse = XmlParser::getNode($response, 'creditResponse');
 
     if (!empty($creditResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'creditResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'creditResponse', 'id');
       $payload_attribute = 'creditResponse';
     }
 
@@ -701,7 +723,7 @@ class VantivApi {
       $transaction->message_variables = array('@auth_code' => $auth_code);
 
       // Get the payload.
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      $payload = XmlParser::getDomDocumentAsString($response);
       $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
       $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
       if (!empty($creditResponse)) {
@@ -723,34 +745,37 @@ class VantivApi {
     }
     elseif ($this->logs == 0) {
       $responses = $this->transactionResponseCodes($response_code);
-      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array(
+        '@respons_message' => $responses['response_message'],
+        '@type' => $responses['response_type'],
+        '@descriptions' => $responses['descriptions']
+      ), WATCHDOG_ERROR);
     }
   }
 
   /**
-   * Process void transactions.
+   * Processes void transactions.
    */
   public function processVoidTransaction($response, $payment_method, $transaction) {
-      // Get response information.
-    $response_code = litle\sdk\XmlParser::getNode($response,'response');
-    $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-    $message = litle\sdk\XmlParser::getNode($response,'message');
-    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+    $response_code = XmlParser::getNode($response, 'response');
+    $order_id = XmlParser::getNode($response, 'orderId');
+    $response_time = XmlParser::getNode($response, 'responseTime');
+    $message = XmlParser::getNode($response, 'message');
+    $auth_code = XmlParser::getNode($response, 'authCode');
+    $avs_result = XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+    $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
 
-    $voidResponse = litle\sdk\XmlParser::getNode($response,'voidResponse');
-    $echeckVoidResponse = litle\sdk\XmlParser::getNode($response,'echeckVoidResponse');
+    $voidResponse = XmlParser::getNode($response, 'voidResponse');
+    $echeckVoidResponse = XmlParser::getNode($response, 'echeckVoidResponse');
 
     if (!empty($voidResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'voidResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'voidResponse', 'id');
       $payload_attribute = 'voidResponse';
     }
 
     if (!empty($echeckVoidResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'echeckVoidResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'echeckVoidResponse', 'id');
       $payload_attribute = 'echeckVoidResponse';
     }
 
@@ -789,7 +814,7 @@ class VantivApi {
       $transaction->message_variables = array('@auth_code' => $auth_code);
 
       // Get the payload.
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      $payload = XmlParser::getDomDocumentAsString($response);
       $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
       $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
       if (!empty($voidResponse) || !empty($echeckVoidResponse)) {
@@ -811,28 +836,32 @@ class VantivApi {
     }
     elseif ($this->logs == 0) {
       $responses = $this->transactionResponseCodes($response_code);
-      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array(
+        '@respons_message' => $responses['response_message'],
+        '@type' => $responses['response_type'],
+        '@descriptions' => $responses['descriptions']
+      ), WATCHDOG_ERROR);
     }
   }
 
   /**
-   * Processes reversed authorized transaction.
+   * Processes an authorization reversal transaction.
    */
-  public function processReversedTransactions($response, $payment_method, $transaction, $partial_amount = '') {
+  public function processReverseTransaction($response, $payment_method, $transaction, $partial_amount = '') {
     // Get response information.
-    $response_code = litle\sdk\XmlParser::getNode($response,'response');
-    $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-    $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-    $message = litle\sdk\XmlParser::getNode($response,'message');
-    $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-    $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-    $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-    $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+    $response_code = XmlParser::getNode($response, 'response');
+    $order_id = XmlParser::getNode($response, 'orderId');
+    $response_time = XmlParser::getNode($response, 'responseTime');
+    $message = XmlParser::getNode($response, 'message');
+    $auth_code = XmlParser::getNode($response, 'authCode');
+    $avs_result = XmlParser::getNode($response, 'avsResult');
+    $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+    $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
 
-    $authReversalResponse = litle\sdk\XmlParser::getNode($response,'authReversalResponse');
+    $authReversalResponse = XmlParser::getNode($response, 'authReversalResponse');
 
     if (!empty($authReversalResponse)) {
-      $id = litle\sdk\XmlParser::getAttribute($response, 'authReversalResponse', 'id');
+      $id = XmlParser::getAttribute($response, 'authReversalResponse', 'id');
       $payload_attribute = 'authReversalResponse';
     }
 
@@ -875,7 +904,7 @@ class VantivApi {
       $transaction->message_variables = array('@auth_code' => $auth_code);
 
       // Get the payload.
-      $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+      $payload = XmlParser::getDomDocumentAsString($response);
       $payload_array = $this->convertPayloadToArray($payload, $payload_attribute);
       $transaction->payload = (is_array($payload_array) == TRUE) ? $payload_array : $payload;
 
@@ -898,12 +927,16 @@ class VantivApi {
     }
     elseif ($this->logs == 0) {
       $responses = $this->transactionResponseCodes($response_code);
-      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array('@respons_message' => $responses['response_message'], '@type' => $responses['response_type'], '@descriptions' => $responses['descriptions']), WATCHDOG_ERROR);
+      watchdog('commerce_vantiv', "The transaction was not successful, the reason might be: message: @respons_message, type: @type, description: @descriptions !", array(
+        '@respons_message' => $responses['response_message'],
+        '@type' => $responses['response_type'],
+        '@descriptions' => $responses['descriptions']
+      ), WATCHDOG_ERROR);
     }
   }
 
   /**
-   * Convert the xml payload to array.
+   * Converts the xml payload to an array.
    */
   public function convertPayloadToArray($payload, $payload_attribute) {
     $xml = simplexml_load_string($payload);
@@ -931,32 +964,33 @@ class VantivApi {
       return FALSE;
     }
   }
+
   /**
-   * Get account links.
+   * Returns account links.
    */
   public function accountLinks($account) {
     switch ($account) {
       case 'sandbox':
         $url = 'https://www.testlitle.com/sandbox/communicator/online';
-      break;
+        break;
       case 'postlive':
         $url = 'https://postlive.litle.com/vap/communicator/online';
-      break;
+        break;
       case 'transact_postlive':
         $url = 'https://transact-postlive.litle.com/vap/communicator/online';
-      break;
+        break;
       case 'production':
         $url = 'https://payments.litle.com/vap/communicator/online';
-      break;
+        break;
       case 'production_transact':
         $url = 'https://transact.litle.com/vap/communicator/online';
-      break;
+        break;
       case 'prelive':
         $url = 'https://prelive.litle.com/vap/communicator/online';
-      break;
+        break;
       case 'transact_prelive':
         $url = 'https://transact-prelive.litle.com/vap/communicator/online';
-      break;
+        break;
     }
     return $url;
   }
@@ -969,120 +1003,120 @@ class VantivApi {
       switch ($card_type) {
         case 'visa':
           $type = 'VI';
-        break;
+          break;
         case 'mastercard':
           $type = 'MC';
-        break;
+          break;
         case 'amex':
           $type = 'AX';
-        break;
+          break;
         case 'discover':
           $type = 'DI';
-        break;
+          break;
         case 'dc':
           $type = 'DC';
-        break;
+          break;
         case 'maestro':
           $type = 'MA';
-        break;
+          break;
         case 'paypal':
           $type = 'PP';
-        break;
+          break;
         case 'jcb':
           $type = 'JC';
-        break;
+          break;
         case 'bml':
           $type = 'BL';
-        break;
+          break;
         case 'echeck':
           $type = 'EC';
-        break;
+          break;
       }
     }
     elseif (!empty($reverse) and empty($card_type)) {
       switch ($reverse) {
         case 'VI':
           $type = 'visa';
-        break;
+          break;
         case 'MC':
           $type = 'mastercard';
-        break;
+          break;
         case 'AX':
           $type = 'amex';
-        break;
+          break;
         case 'DI':
           $type = 'discover';
-        break;
+          break;
         case 'DC':
           $type = 'dc';
-        break;
+          break;
         case 'MA':
           $type = 'maestro';
-        break;
+          break;
         case 'PP':
           $type = 'paypal';
-        break;
+          break;
         case 'JC':
           $type = 'jcb';
-        break;
+          break;
         case 'BL':
           $type = 'bml';
-        break;
+          break;
         case 'EC':
           $type = 'echeck';
-        break;
+          break;
       }
     }
-    return  $type;
+    return $type;
   }
 
   public function avsResponseCodes($code) {
     $result = array();
     switch ($code) {
       case '00' :
-          $result = t('5-Digit zip and address match');
+        $result = t('5-Digit zip and address match');
         break;
       case '01' :
-          $result = t('9-Digit zip and address match');
+        $result = t('9-Digit zip and address match');
         break;
       case '02' :
-          $result = t('Postal code and address match');
+        $result = t('Postal code and address match');
         break;
       case '10' :
-          $result = t('5-Digit zip matches, address does not match');
+        $result = t('5-Digit zip matches, address does not match');
         break;
       case '11' :
-          $result = t('9-Digit zip matches, address does not match');
+        $result = t('9-Digit zip matches, address does not match');
         break;
       case '12' :
-          $result = t('Zip does not match, address matches');
+        $result = t('Zip does not match, address matches');
         break;
       case '13' :
-          $result = t('Postal code does not match, address matches');
+        $result = t('Postal code does not match, address matches');
         break;
       case '14' :
-          $result = t('Postal code matches, address not verified');
+        $result = t('Postal code matches, address not verified');
         break;
       case '20' :
-          $result = t('Neither zip nor address match');
+        $result = t('Neither zip nor address match');
         break;
       case '30' :
-          $result = t('AVS service not supported by issuer');
+        $result = t('AVS service not supported by issuer');
         break;
       case '31' :
-          $result = t('AVS system not available');
+        $result = t('AVS system not available');
         break;
       case '32' :
-          $result = t('Address unavailable');
+        $result = t('Address unavailable');
         break;
       case '33' :
-          $result = t('General error');
+        $result = t('General error');
         break;
       case '34' :
-          $result = t('AVS not performed');
+        $result = t('AVS not performed');
         break;
       case '40' :
-          $result = t('Address failed Litle & Co. edit checks');
+        $result = t('Address failed Litle & Co. edit checks');
         break;
     }
     return $result;
@@ -1091,23 +1125,23 @@ class VantivApi {
   public function cardValidationResponseCodes($code) {
     switch ($code) {
       case 'M' :
-          $result = t('Match');
+        $result = t('Match');
         break;
       case 'N' :
-          $result = t('No Match');
+        $result = t('No Match');
         break;
       case 'P' :
-          $result = t('Not Processed');
+        $result = t('Not Processed');
         break;
       case 'S' :
-          $result = t('CVV2/CVC2/CID should be on the card, but the merchant
+        $result = t('CVV2/CVC2/CID should be on the card, but the merchant
                      has indicated CVV2/CVC2/CID is not present');
         break;
       case 'U' :
-          $result = t('Issuer is not certified for CVV2/CVC2/CID processing');
+        $result = t('Issuer is not certified for CVV2/CVC2/CID processing');
         break;
       case '' :
-          $result = t('Check was not done for an unspecified reason');
+        $result = t('Check was not done for an unspecified reason');
         break;
     }
     return $result;
@@ -1146,7 +1180,7 @@ class VantivApi {
       case '102' :
         $result = array(
           'response_message' => t('Re-submit Transaction'),
-           'response_type' => t('Soft Decline'),
+          'response_type' => t('Soft Decline'),
           'descriptions' => t('There is a temporary problem with your submission. Please re-submit the transaction.'),
         );
         break;
@@ -1665,7 +1699,7 @@ class VantivApi {
             invalid. The FSA amount must be greater than 0, and cannot be greater than the transaction amount.'),
         );
         break;
-       case '346' :
+      case '346' :
         $result = array(
           'response_message' => t('Invalid billing descriptor prefix'),
           'response_type' => t('Hard Decline'),

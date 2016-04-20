@@ -11,6 +11,9 @@ define('COMMERCE_VANTIV_STATUS_REFUNDED', 'REFUNDED');
 define('COMMERCE_VANTIV_STATUS_VOID', 'VOIDED');
 define('COMMERCE_VANTIV_STATUS_VOIDED', 'VOIDEDED');
 
+use litle\sdk\XmlParser;
+use litle\sdk\LitleOnlineRequest;
+
 /**
  * Implements hook_views_api().
  */
@@ -114,7 +117,6 @@ function commerce_vantiv_menu_alter(&$items) {
  * Implements hook_form_alter().
  */
 function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
-
   if (!empty($form_state['build_info']['args'])) {
     foreach ($form_state['build_info']['args'] as $key => $value) {
       if (is_object($value) and get_class($value) == 'CommerceCardOnFile') {
@@ -123,17 +125,17 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
     }
   }
   if (!empty($card) and is_object($card) and $form_id == 'commerce_cardonfile_card_form' and get_class($card) == 'CommerceCardOnFile') {
-  if ($card->instance_id == 'vantiv_direct|commerce_payment_vantiv_direct') {
-    $payment_method = commerce_payment_method_instance_load('vantiv_echeck|commerce_payment_vantiv_echeck');
-    if ($form_state['op'] == 'update') {
-      drupal_set_title(t('Update a card'));
-    }
-    elseif ($form_state['op'] == 'create') {
-      drupal_set_title(t('Add a card'));
-    }
-    $card_number = 'XXXX-XXXX-XXXX-' . $form_state['build_info']['args'][1]->card_number;
+    if ($card->instance_id == 'vantiv_direct|commerce_payment_vantiv_direct') {
+      $payment_method = commerce_payment_method_instance_load('vantiv_echeck|commerce_payment_vantiv_echeck');
+      if ($form_state['op'] == 'update') {
+        drupal_set_title(t('Update a card'));
+      }
+      elseif ($form_state['op'] == 'create') {
+        drupal_set_title(t('Add a card'));
+      }
+      $card_number = 'XXXX-XXXX-XXXX-' . $form_state['build_info']['args'][1]->card_number;
 
-    // Add a card type selector if specified.
+      // Add a card type selector if specified.
       $form['credit_card']['type'] = array(
         '#type' => 'select',
         '#title' => t('Card type'),
@@ -171,7 +173,6 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
         '#title' => t('Expiration year.'),
         '#default_value' => $form_state['build_info']['args'][1]->card_exp_year,
       );
-
 
       $form['validate'] = array(
         '#type' => 'hidden',
@@ -226,9 +227,9 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
         '#title' => t('Account type'),
         '#options' => array(
           'Checking' => t('Checking'),
-          'Savings'  => t('Savings'),
-          'Corporate'  => t('Corporate'),
-          'Corp Savings'  => t('Corp Savings'),
+          'Savings' => t('Savings'),
+          'Corporate' => t('Corporate'),
+          'Corp Savings' => t('Corp Savings'),
         ),
         '#weight' => -50,
       );
@@ -303,11 +304,11 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
         '#weight' => '95',
       );
 
-      if (strstr(current_path(), 'edit') != FALSE ) {
+      if (strstr(current_path(), 'edit') != FALSE) {
         $form['submit']['#value'] = t('Update echeck');
         $form['credit_card']['cardonfile_instance_default']['#title'] = t('Use as default echeck for payments with %method', array('%method' => $payment_method['display_title']));
       }
-      elseif (strstr(current_path(), 'add') != FALSE ) {
+      elseif (strstr(current_path(), 'add') != FALSE) {
         $form['credit_card']['cardonfile_instance_default']['#title'] = t('Use as default echeck for payments with %method', array('%method' => $payment_method['display_title']));
         $form['submit']['#value'] = t('Add echeck');
       }
@@ -319,7 +320,6 @@ function commerce_vantiv_form_alter(&$form, &$form_state, $form_id) {
       $form['#validate'][] = 'commerce_vantiv_form_elements_vaidate';
     }
   }
-
   return $form;
 }
 
@@ -351,7 +351,7 @@ function commerce_vantiv_cardonfile_charge($payment_method, $card_data, $order, 
     $amount = '';
   }
 
-  $result = $api->directPayments($customer_profile, $order, $card_data, $payment_method, $amount, $card_data->remote_id);
+  $result = $api->processDirectPayment($customer_profile, $order, $card_data, $payment_method, $amount, $card_data->remote_id);
   return TRUE;
 }
 
@@ -403,73 +403,73 @@ function commerce_vantiv_cardonfile_update() {
     'print_xml' => '',
     // Fake order.
     'orderId' => $last_order->order_id,
-    'orderSource'=>'ecommerce',
+    'orderSource' => 'ecommerce',
     'amount' => 10,
     'accountNumber' => $params['credit_card']['number'],
     'billToAddress' => array(
-	  'name' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['name_line'] : t('Save card name'),
-	  'addressLine1' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['thoroughfare'] : t('Save card address'),
-	  'city' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['locality'] : t('Save card city'),
-	  'state' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['administrative_area'] : t('Save card state'),
-	  'zip' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['postal_code'] : t('Save card postal code'),
-	  'country' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['country'] : t('Save card country'),
+      'name' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['name_line'] : t('Save card name'),
+      'addressLine1' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['thoroughfare'] : t('Save card address'),
+      'city' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['locality'] : t('Save card city'),
+      'state' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['administrative_area'] : t('Save card state'),
+      'zip' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['postal_code'] : t('Save card postal code'),
+      'country' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['country'] : t('Save card country'),
     ),
   );
 
   if ($params['validate'] == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
 
     $data['shipToAddress'] = array(
-        'name' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['name_line'] : 'Save card name',
-        'city' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['locality'] : 'Save card city',
-        'state' => '',
-        'email' => !empty($order) ? $order->mail : $user->mail,
-      );
+      'name' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['name_line'] : 'Save card name',
+      'city' => !empty($customer_profile) ? $customer_profile->commerce_customer_address['und'][0]['locality'] : 'Save card city',
+      'state' => '',
+      'email' => !empty($order) ? $order->mail : $user->mail,
+    );
     $data['echeckToken'] = array(
       'litleToken' => $token,
-        'accType' => $params['credit_card']['type'],
-        'routingNum' => $params['credit_card']['routingNum'],
-        'checkNum' => $params['credit_card']['checkNum'],
+      'accType' => $params['credit_card']['type'],
+      'routingNum' => $params['credit_card']['routingNum'],
+      'checkNum' => $params['credit_card']['checkNum'],
     );
   }
   elseif ($params['validate'] == 'vantiv_direct|commerce_payment_vantiv_direct') {
     $data['card'] = array(
       'number' => $params['credit_card']['number'],
-  	  'expDate' => $params['credit_card']['exp_month'] . substr($params['credit_card']['exp_year'], 2, 4),
-  	  'cardValidationNum' => empty($params['code']) ? $params['credit_card']['code'] : $params['code'],
-  		'type' => $api->cardTypes($params['credit_card']['type']),
+      'expDate' => $params['credit_card']['exp_month'] . substr($params['credit_card']['exp_year'], 2, 4),
+      'cardValidationNum' => empty($params['code']) ? $params['credit_card']['code'] : $params['code'],
+      'type' => $api->cardTypes($params['credit_card']['type']),
     );
 
     $data['token'] = array(
       'litleToken' => $token,
     );
   }
-  $initilaize = new litle\sdk\LitleOnlineRequest();
+  $initilaize = new LitleOnlineRequest();
   if ($params['validate'] == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
-  	$response = $initilaize->echeckSaleRequest($data);
+    $response = $initilaize->echeckSaleRequest($data);
   }
   else {
-  	$response = $initilaize->saleRequest($data);
+    $response = $initilaize->saleRequest($data);
   }
-  $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
+  $payload = XmlParser::getDomDocumentAsString($response);
 
   // Get response information.
-  $response_code = litle\sdk\XmlParser::getNode($response,'response');
-  $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-  $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-  $message = litle\sdk\XmlParser::getNode($response,'message');
-  $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-  $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-  $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-  $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
+  $response_code = XmlParser::getNode($response, 'response');
+  $order_id = XmlParser::getNode($response, 'orderId');
+  $response_time = XmlParser::getNode($response, 'responseTime');
+  $message = XmlParser::getNode($response, 'message');
+  $auth_code = XmlParser::getNode($response, 'authCode');
+  $avs_result = XmlParser::getNode($response, 'avsResult');
+  $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+  $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
 
 
-  $saleResponse = litle\sdk\XmlParser::getNode($response, 'saleResponse');
-  $echeckSalesResponse = litle\sdk\XmlParser::getNode($response, 'echeckSalesResponse');
-  $accountUpdater = litle\sdk\XmlParser::getNode($response, 'accountUpdater');
-  $newCardInfo = litle\sdk\XmlParser::getNode($response, 'newCardInfo');
-  $type = litle\sdk\XmlParser::getNode($response, 'type');
-  $number = litle\sdk\XmlParser::getNode($response, 'number');
-  $expDate = litle\sdk\XmlParser::getNode($response, 'expDate');
+  $saleResponse = XmlParser::getNode($response, 'saleResponse');
+  $echeckSalesResponse = XmlParser::getNode($response, 'echeckSalesResponse');
+  $accountUpdater = XmlParser::getNode($response, 'accountUpdater');
+  $newCardInfo = XmlParser::getNode($response, 'newCardInfo');
+  $type = XmlParser::getNode($response, 'type');
+  $number = XmlParser::getNode($response, 'number');
+  $expDate = XmlParser::getNode($response, 'expDate');
 
   if (!empty($accountUpdater) and !empty($newCardInfo)) {
     $card_type = $api->cardTypes('', $type);
@@ -485,24 +485,24 @@ function commerce_vantiv_cardonfile_update() {
   }
 
   if (!empty($echeckSalesResponse)) {
-  	$id = litle\sdk\XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
-  	// Process the transaction.
-  	$transaction = commerce_payment_transaction_new('vantiv_echeck', $last_order->order_id);
-        $transaction->instance_id = 'vantiv_echeck|commerce_payment_vantiv_echeck';
-        $transaction->amount = $last_order->commerce_order_total['und'][0]['amount'];
-        $transaction->currency_code = $last_order->commerce_order_total['und'][0]['currency_code'];
-        $transaction->remote_id = $litle_txn_id;
-        $transaction->remote_status = $message;
-        $transaction->message_variables = array('@auth_code' => $auth_code);
-        $transaction->data = array('auth_code' => $auth_code);
-        $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-        $transaction->data = array('id' => $id);
-  	commerce_payment_transaction_save($transaction);
-  	$transaction = commerce_vantiv_load_last_saved_transaction($user->uid);
-	if (is_array($transaction)) {
-	  $transaction = reset($transaction);
-	}
-  	$result = $api->crossPayment($transaction, '', '', 'void');
+    $id = XmlParser::getAttribute($response, 'echeckSalesResponse', 'id');
+    // Process the transaction.
+    $transaction = commerce_payment_transaction_new('vantiv_echeck', $last_order->order_id);
+    $transaction->instance_id = 'vantiv_echeck|commerce_payment_vantiv_echeck';
+    $transaction->amount = $last_order->commerce_order_total['und'][0]['amount'];
+    $transaction->currency_code = $last_order->commerce_order_total['und'][0]['currency_code'];
+    $transaction->remote_id = $litle_txn_id;
+    $transaction->remote_status = $message;
+    $transaction->message_variables = array('@auth_code' => $auth_code);
+    $transaction->data = array('auth_code' => $auth_code);
+    $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+    $transaction->data = array('id' => $id);
+    commerce_payment_transaction_save($transaction);
+    $transaction = commerce_vantiv_load_last_saved_transaction($user->uid);
+    if (is_array($transaction)) {
+      $transaction = reset($transaction);
+    }
+    $result = $api->processCrossPayment($transaction, '', '', 'void');
   }
 
   return TRUE;
@@ -527,7 +527,7 @@ function commerce_vantiv_cardonfile_create() {
     $params = $_GET;
   }
   $api = commerce_vantiv_api_object();
-  //$api->libraryLoad();
+  //$api->loadLibraries();
 
   $data = array(
     'user' => $api->user,
@@ -553,9 +553,9 @@ function commerce_vantiv_cardonfile_create() {
     $data['accountNumber'] = $params['credit_card']['number'];
     $data['card'] = array(
       'number' => !empty($params['credit_card']['number']) ? $params['credit_card']['number'] : $params['number'],
-  	  'expDate' => $params['credit_card']['exp_month'] . substr($params['credit_card']['exp_year'], 2, 4),
-  	  'cardValidationNum' => $params['credit_card']['code'],
-  		'type' => $api->cardTypes($params['credit_card']['type']),
+      'expDate' => $params['credit_card']['exp_month'] . substr($params['credit_card']['exp_year'], 2, 4),
+      'cardValidationNum' => $params['credit_card']['code'],
+      'type' => $api->cardTypes($params['credit_card']['type']),
     );
   }
   elseif ($params['validate'] == 'vantiv_echeck|commerce_payment_vantiv_echeck') {
@@ -570,18 +570,18 @@ function commerce_vantiv_cardonfile_create() {
     $params['exp_year'] = '2100';
   }
 
-  $initilaize = new litle\sdk\LitleOnlineRequest();
+  $initilaize = new LitleOnlineRequest();
   $response = $initilaize->registerTokenRequest($data);
-  $payload = litle\sdk\XmlParser::getDomDocumentAsString($response);
-  $response_code = litle\sdk\XmlParser::getNode($response,'response');
-  $order_id = litle\sdk\XmlParser::getNode($response,'orderId');
-  $response_time = litle\sdk\XmlParser::getNode($response,'responseTime');
-  $message = litle\sdk\XmlParser::getNode($response,'message');
-  $auth_code = litle\sdk\XmlParser::getNode($response,'authCode');
-  $avs_result = litle\sdk\XmlParser::getNode($response,'avsResult');
-  $card_validation_result = litle\sdk\XmlParser::getNode($response,'cardValidationResult');
-  $litle_txn_id = litle\sdk\XmlParser::getNode($response,'litleTxnId');
-  $litleToken = litle\sdk\XmlParser::getNode($response,'litleToken');
+  $payload = XmlParser::getDomDocumentAsString($response);
+  $response_code = XmlParser::getNode($response, 'response');
+  $order_id = XmlParser::getNode($response, 'orderId');
+  $response_time = XmlParser::getNode($response, 'responseTime');
+  $message = XmlParser::getNode($response, 'message');
+  $auth_code = XmlParser::getNode($response, 'authCode');
+  $avs_result = XmlParser::getNode($response, 'avsResult');
+  $card_validation_result = XmlParser::getNode($response, 'cardValidationResult');
+  $litle_txn_id = XmlParser::getNode($response, 'litleTxnId');
+  $litleToken = XmlParser::getNode($response, 'litleToken');
 
   //$customer_profile = commerce_customer_profile_load($order->commerce_customer_billing['und'][0]['profile_id']);
   $methods = explode('|', $params['validate']);
@@ -602,7 +602,6 @@ function commerce_vantiv_cardonfile_create() {
   }
   commerce_cardonfile_save($card_data);
   return $card_data;
-
 }
 
 /**
@@ -929,13 +928,13 @@ function commerce_vantiv_load_last_saved_transaction($user_id = '') {
     $query->propertyCondition('uid', $user_id);
   }
   else {
-  	$query->propertyCondition('uid', $user->uid);
+    $query->propertyCondition('uid', $user->uid);
   }
   $query->propertyOrderBy('created', 'DESC');
   $query->range(0, 1);
   $return = array();
   $result = $query->execute();
-    if (!empty($result['commerce_payment_transaction'])) {
+  if (!empty($result['commerce_payment_transaction'])) {
     foreach ($result['commerce_payment_transaction'] as $transaction) {
       $return[] = entity_load_single('commerce_payment_transaction', $transaction->transaction_id);
     }
@@ -950,12 +949,12 @@ function commerce_vantiv_load_last_saved_cof($user_id) {
   global $user;
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'commerce_cardonfile')
-  ->propertyCondition('uid', $user_id);
+    ->propertyCondition('uid', $user_id);
   $query->propertyOrderBy('created', 'DESC');
   $query->range(0, 1);
   $return = array();
   $result = $query->execute();
-    if (!empty($result['commerce_cardonfile'])) {
+  if (!empty($result['commerce_cardonfile'])) {
     foreach ($result['commerce_cardonfile'] as $card) {
       $return[] = entity_load_single('commerce_cardonfile', $card->card_id);
     }
@@ -1053,7 +1052,10 @@ function commerce_vantiv_get_label($card) {
       $card_type = t('@account_type account', array('@account_type' => $card_type));
       break;
   }
-  $str = t('@card_type ending in @number', array('@card_type' => $card_type, '@number' => $card->card_number));
+  $str = t('@card_type ending in @number', array(
+    '@card_type' => $card_type,
+    '@number' => $card->card_number
+  ));
   return $str;
 }
 
@@ -1063,12 +1065,12 @@ function commerce_vantiv_get_label($card) {
 function commerce_vantiv_load_last_saved_order($user_id) {
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'commerce_order')
-  ->propertyCondition('uid', $user_id);
+    ->propertyCondition('uid', $user_id);
   $query->propertyOrderBy('created', 'DESC');
   $query->range(0, 1);
   $return = array();
   $result = $query->execute();
-    if (!empty($result['commerce_order'])) {
+  if (!empty($result['commerce_order'])) {
     foreach ($result['commerce_order'] as $order) {
       $return[] = entity_load_single('commerce_order', $order->order_id);
     }
@@ -1090,7 +1092,6 @@ function commerce_vantiv_load_cof($user_id, $payment_method) {
   // details container to store the credit card for future use.
   if (!$payment_method['offsite']) {
     $storage = variable_get('commerce_cardonfile_storage', 'opt-in');
-
     if (in_array($storage, array('opt-in', 'opt-out'))) {
       $form['commerce_payment']['payment_details']['credit_card']['cardonfile_store'] = array(
         '#type' => 'checkbox',
@@ -1104,7 +1105,6 @@ function commerce_vantiv_load_cof($user_id, $payment_method) {
         '#value' => TRUE,
       );
     }
-
   }
 
   // Load existing active cards for the payment method instance and user.
@@ -1179,7 +1179,8 @@ function commerce_vantiv_load_cof($user_id, $payment_method) {
   if (!empty($instance_default_card_id)) {
     if (empty($form_state['values']) ||
       (!empty($form_state['values']['commerce_payment']['payment_details']['cardonfile']) &&
-      $form_state['values']['commerce_payment']['payment_details']['cardonfile'] == $instance_default_card_id)) {
+        $form_state['values']['commerce_payment']['payment_details']['cardonfile'] == $instance_default_card_id)
+    ) {
       $instance_default_default_value = 1;
     }
   }
@@ -1316,7 +1317,7 @@ function commerce_vantiv_batch_operation($transaction_id, $operation_details, &$
   $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
   $api = commerce_vantiv_api_object();
   if (!empty($order)) {
-    $result = $api->crossPayment($transaction, '', '', 'capture', TRUE);
+    $result = $api->processCrossPayment($transaction, '', '', 'capture', TRUE);
   }
   $context['results'][] = !empty($result) ? $result : '';
   $_SESSION['http_request_count']++;
@@ -1326,7 +1327,6 @@ function commerce_vantiv_batch_operation($transaction_id, $operation_details, &$
  * Batch 'finished' callback.
  */
 function commerce_vantiv_batchs_finished($success, $results, $operations) {
-
   if ($success and !empty($results)) {
     foreach ($results as $single_result) {
       if ($single_result['result'] == TRUE and !empty($single_result['transaction_id']) and is_numeric($single_result['transaction_id']) == TRUE) {
@@ -1345,7 +1345,7 @@ function commerce_vantiv_batchs_finished($success, $results, $operations) {
 function commerce_vantiv_load_all_pending_transactions($date = '', $transaction_id = '', $order_id = '') {
   $query = new EntityFieldQuery();
   $query->entityCondition('entity_type', 'commerce_payment_transaction')
-  ->propertyCondition('status', 'pending');
+    ->propertyCondition('status', 'pending');
   if (!empty($transaction_id)) {
     $query->propertyCondition('transaction_id', $transaction_id);
   }

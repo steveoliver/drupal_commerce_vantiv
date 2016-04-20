@@ -37,6 +37,5 @@ function commerce_vantiv_views_data_alter(&$data) {
       'handler' => 'commerce_vantiv_handler_field_card_label',
     ),
   );
-  dsm($data, '$data test');
   return $data;
 }
